@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dailyhisab.android.core.designsystem.DailyHisabCard
+import com.dailyhisab.android.core.designsystem.DailyHisabSectionTitle
 import com.dailyhisab.android.ui.theme.DailyBlue
 import com.dailyhisab.android.ui.theme.DailyOrange
 
@@ -34,16 +36,11 @@ fun HomeScreen(contentPadding: PaddingValues, modifier: Modifier = Modifier) {
         item { QuickAddCard() }
         item { StatisticsRow() }
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("This month overview", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Your expense chart will appear after the first transaction.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            DailyHisabCard(modifier = Modifier.fillMaxWidth()) {
+                DailyHisabSectionTitle(
+                    title = "This month overview",
+                    supportingText = "Your expense chart will appear after the first transaction.",
+                )
             }
         }
     }

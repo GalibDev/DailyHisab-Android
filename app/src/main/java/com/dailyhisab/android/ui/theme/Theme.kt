@@ -5,31 +5,63 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 
-private val ColorWhite = androidx.compose.ui.graphics.Color.White
-private val ColorBlueLight = androidx.compose.ui.graphics.Color(0xFF9DB7FF)
+enum class AppThemeStyle { Default, Aurora }
 
 private val LightColors = lightColorScheme(
     primary = DailyBlue,
+    onPrimary = Color.White,
     secondary = DailyOrange,
+    tertiary = DailyGreen,
+    error = DailyRed,
     background = AppBackground,
-    surface = ColorWhite,
+    onBackground = Ink,
+    surface = Color.White,
+    onSurface = Ink,
+    surfaceVariant = SurfaceSoft,
+    onSurfaceVariant = InkMuted,
+    outlineVariant = DividerLight,
+)
+
+private val AuroraColors = LightColors.copy(
+    background = AuroraBackground,
+    surface = AuroraSurface,
+    surfaceVariant = Color(0xFFEFF8FF),
+    tertiary = AuroraLavender,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = ColorBlueLight,
+    primary = DailyBlueLight,
+    onPrimary = DailyBlueDark,
     secondary = DailyOrange,
+    tertiary = AuroraCyan,
+    error = Color(0xFFFFB4AB),
     background = DarkBackground,
+    surface = DarkSurface,
+    surfaceVariant = DarkSurfaceSoft,
 )
 
 @Composable
 fun DailyHisabTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    style: AppThemeStyle = AppThemeStyle.Aurora,
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = DailyHisabTypography,
-        content = content,
-    )
+    val colors = when {
+        darkTheme -> DarkColors
+        style == AppThemeStyle.Aurora -> AuroraColors
+        else -> LightColors
+    }
+
+    CompositionLocalProvider(LocalDailyHisabSpacing provides DailyHisabSpacing()) {
+        MaterialTheme(
+            colorScheme = colors,
+            typography = DailyHisabTypography,
+            shapes = DailyHisabShapes,
+            content = content,
+        )
+    }
 }
+
