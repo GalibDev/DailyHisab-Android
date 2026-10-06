@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Daily Hisab</string>
+    <string name="native_foundation_ready">Native Kotlin foundation is ready</string>
+</resources>
+
