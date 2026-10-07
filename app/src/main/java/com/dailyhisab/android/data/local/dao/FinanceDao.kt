@@ -8,12 +8,22 @@ import androidx.room.Query
 import androidx.room.Update
 import com.dailyhisab.android.data.local.entity.CategoryEntity
 import com.dailyhisab.android.data.local.entity.TransactionEntity
+import com.dailyhisab.android.data.local.entity.BudgetEntity
 import kotlinx.coroutines.flow.Flow
 
 data class SummaryRow(val expenseMinor: Long, val incomeMinor: Long)
 
 @Dao
 interface FinanceDao {
+    @Query("SELECT * FROM budgets ORDER BY updatedAtEpochMillis DESC")
+    fun observeBudgets(): Flow<List<BudgetEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudget(budget: BudgetEntity): Long
+
+    @Query("DELETE FROM budgets WHERE id = :id")
+    suspend fun deleteBudget(id: Long)
+
     @Query("SELECT COUNT(*) FROM categories")
     suspend fun categoryCount(): Int
 

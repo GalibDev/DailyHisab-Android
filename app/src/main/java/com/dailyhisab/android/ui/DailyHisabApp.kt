@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.dailyhisab.android.feature.home.HomeScreen
 import com.dailyhisab.android.feature.category.CategoryScreen
 import com.dailyhisab.android.feature.transaction.AddTransactionScreen
-import com.dailyhisab.android.feature.history.TransactionHistoryScreen
+import com.dailyhisab.android.feature.reports.ReportsHubScreen
 import com.dailyhisab.android.feature.calendar.CalendarScreen
 import com.dailyhisab.android.feature.navigation.PrimaryPlaceholderScreen
 
@@ -70,7 +70,7 @@ fun DailyHisabApp() {
     ) { contentPadding ->
         when (destination) {
             PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding)
-            PrimaryDestination.Reports -> TransactionHistoryScreen(contentPadding = contentPadding)
+            PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding)
             PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
             PrimaryDestination.Add -> if (managingCategories) {
                 CategoryScreen(contentPadding = contentPadding, onBack = { managingCategories = false })
