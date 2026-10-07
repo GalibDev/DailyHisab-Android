@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.dailyhisab.android.feature.home.HomeScreen
+import com.dailyhisab.android.feature.category.CategoryScreen
 import com.dailyhisab.android.feature.navigation.PrimaryPlaceholderScreen
 
 private enum class PrimaryDestination(val label: String, val icon: ImageVector) {
@@ -65,8 +66,8 @@ fun DailyHisabApp() {
     ) { contentPadding ->
         when (destination) {
             PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding)
+            PrimaryDestination.Add -> CategoryScreen(contentPadding = contentPadding)
             else -> PrimaryPlaceholderScreen(destination.label, destination.icon, contentPadding)
         }
     }
 }
-

@@ -14,6 +14,6 @@ interface FinanceRepository {
     suspend fun saveTransaction(transaction: FinanceTransaction): Long
     suspend fun deleteTransaction(id: Long)
     suspend fun saveCategory(category: Category): Long
+    suspend fun deleteCategory(id: Long)
     suspend fun updateCategoryOrder(categoryIds: List<Long>)
 }
-

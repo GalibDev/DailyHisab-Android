@@ -37,6 +37,8 @@ class RoomFinanceRepository(private val database: DailyHisabDatabase) : FinanceR
 
     override suspend fun saveCategory(category: Category): Long = dao.insertCategory(category.toEntity())
 
+    override suspend fun deleteCategory(id: Long) = dao.deleteCategory(id)
+
     override suspend fun updateCategoryOrder(categoryIds: List<Long>) {
         database.withTransaction {
             val byId = dao.categoriesByIds(categoryIds).associateBy(CategoryEntity::id)
@@ -57,4 +59,3 @@ internal fun FinanceTransaction.toEntity() = TransactionEntity(
 
 internal fun CategoryEntity.toDomain() = Category(id, name, iconKey, colorArgb, position, isDefault)
 internal fun Category.toEntity() = CategoryEntity(id, name, iconKey, colorArgb, position, isDefault)
-

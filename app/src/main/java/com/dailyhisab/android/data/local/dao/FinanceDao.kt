@@ -14,6 +14,9 @@ data class SummaryRow(val expenseMinor: Long, val incomeMinor: Long)
 
 @Dao
 interface FinanceDao {
+    @Query("SELECT COUNT(*) FROM categories")
+    suspend fun categoryCount(): Int
+
     @Query("SELECT * FROM transactions ORDER BY dateEpochDay DESC, createdAtEpochMillis DESC")
     fun observeTransactions(): Flow<List<TransactionEntity>>
 
@@ -35,10 +38,12 @@ interface FinanceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: CategoryEntity): Long
 
+    @Query("DELETE FROM categories WHERE id = :id")
+    suspend fun deleteCategory(id: Long)
+
     @Update
     suspend fun updateCategories(categories: List<CategoryEntity>)
 
     @Query("SELECT * FROM categories WHERE id IN (:ids)")
     suspend fun categoriesByIds(ids: List<Long>): List<CategoryEntity>
 }
-
