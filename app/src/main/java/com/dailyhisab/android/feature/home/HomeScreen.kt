@@ -10,6 +10,8 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,22 +21,28 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dailyhisab.android.core.designsystem.DailyHisabCard
 import com.dailyhisab.android.core.designsystem.DailyHisabSectionTitle
 import com.dailyhisab.android.ui.theme.DailyBlue
 import com.dailyhisab.android.ui.theme.DailyOrange
 
 @Composable
-fun HomeScreen(contentPadding: PaddingValues, modifier: Modifier = Modifier) {
+fun HomeScreen(
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel = viewModel(),
+) {
+    val summary by viewModel.summary.collectAsState()
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(contentPadding),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item { HomeHeader() }
-        item { OverviewCard() }
+        item { OverviewCard(summary) }
         item { QuickAddCard() }
-        item { StatisticsRow() }
+        item { StatisticsRow(summary) }
         item {
             DailyHisabCard(modifier = Modifier.fillMaxWidth()) {
                 DailyHisabSectionTitle(
@@ -67,7 +75,7 @@ private fun HomeHeader() {
 }
 
 @Composable
-private fun OverviewCard() {
+private fun OverviewCard(summary: DashboardSummary) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -94,11 +102,11 @@ private fun OverviewCard() {
             }
             Spacer(Modifier.height(28.dp))
             Text("Today's expense", color = Color.White.copy(alpha = 0.75f), fontWeight = FontWeight.SemiBold)
-            Text("৳ 0.00", color = Color.White, fontSize = 42.sp, fontWeight = FontWeight.Bold)
+            Text(formatMoney(summary.todayExpenseMinor), color = Color.White, fontSize = 42.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(22.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OverviewMetric("THIS MONTH", "৳ 0", Modifier.weight(1f))
-                OverviewMetric("ALL EXPENSE", "৳ 0", Modifier.weight(1f))
+                OverviewMetric("THIS MONTH", formatMoney(summary.monthExpenseMinor), Modifier.weight(1f))
+                OverviewMetric("ALL EXPENSE", formatMoney(summary.allExpenseMinor), Modifier.weight(1f))
             }
         }
     }
@@ -152,12 +160,18 @@ private fun QuickAction(label: String, icon: ImageVector, color: Color) {
 }
 
 @Composable
-private fun StatisticsRow() {
+private fun StatisticsRow(summary: DashboardSummary) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatCard("Total expense", "৳ 0", Icons.Filled.AccountBalanceWallet, Modifier.weight(1f))
-        StatCard("Total days", "0 Days", Icons.Filled.CalendarMonth, Modifier.weight(1f))
-        StatCard("Daily average", "৳ 0", Icons.Filled.ArrowUpward, Modifier.weight(1f))
+        StatCard("Total expense", formatMoney(summary.monthExpenseMinor), Icons.Filled.AccountBalanceWallet, Modifier.weight(1f))
+        StatCard("Total days", "${summary.countedDays} Days", Icons.Filled.CalendarMonth, Modifier.weight(1f))
+        StatCard("Daily average", formatMoney(summary.dailyAverageMinor), Icons.Filled.ArrowUpward, Modifier.weight(1f))
     }
+}
+
+private fun formatMoney(amountMinor: Long): String {
+    val whole = amountMinor / 100
+    val fraction = amountMinor % 100
+    return if (fraction == 0L) "৳ $whole" else "৳ $whole.${fraction.toString().padStart(2, '0')}"
 }
 
 @Composable
