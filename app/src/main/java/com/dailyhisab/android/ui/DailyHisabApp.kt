@@ -30,6 +30,9 @@ import com.dailyhisab.android.feature.transaction.AddTransactionScreen
 import com.dailyhisab.android.feature.reports.ReportsHubScreen
 import com.dailyhisab.android.feature.calendar.CalendarScreen
 import com.dailyhisab.android.feature.navigation.PrimaryPlaceholderScreen
+import com.dailyhisab.android.feature.profile.LocalProfile
+import com.dailyhisab.android.feature.profile.ProfilePreferences
+import com.dailyhisab.android.feature.profile.ProfileScreen
 
 private enum class PrimaryDestination(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home), Reports("Reports", Icons.Filled.BarChart),
@@ -38,7 +41,7 @@ private enum class PrimaryDestination(val label: String, val icon: ImageVector) 
 }
 
 @Composable
-fun DailyHisabApp() {
+fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
     var destination by rememberSaveable { mutableStateOf(PrimaryDestination.Home) }
     var managingCategories by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -72,12 +75,12 @@ fun DailyHisabApp() {
             PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding)
             PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding)
             PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
+            PrimaryDestination.Profile -> ProfileScreen(contentPadding, profile, preferences)
             PrimaryDestination.Add -> if (managingCategories) {
                 CategoryScreen(contentPadding = contentPadding, onBack = { managingCategories = false })
             } else {
                 AddTransactionScreen(contentPadding = contentPadding, onManageCategories = { managingCategories = true })
             }
-            else -> PrimaryPlaceholderScreen(destination.label, destination.icon, contentPadding)
         }
     }
 }
