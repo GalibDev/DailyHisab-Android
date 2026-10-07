@@ -47,6 +47,11 @@ fun TransactionHistoryScreen(contentPadding: PaddingValues, viewModel: Transacti
             (start == null || !transaction.date.isBefore(start)) &&
             (end == null || !transaction.date.isAfter(end))
     }
+    val expenseTotal = filtered.filter { it.type == TransactionType.Expense }.sumOf { it.amountMinor }
+    val incomeTotal = filtered.filter { it.type == TransactionType.Income }.sumOf { it.amountMinor }
+    val categoryTotals = filtered.filter { it.type == TransactionType.Expense }
+        .groupBy { it.categoryId }.mapValues { (_, rows) -> rows.sumOf { it.amountMinor } }
+        .toList().sortedByDescending { it.second }.take(3)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(contentPadding),
@@ -54,6 +59,25 @@ fun TransactionHistoryScreen(contentPadding: PaddingValues, viewModel: Transacti
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { Text("Transaction history", style = MaterialTheme.typography.headlineMedium) }
+        item {
+            DailyHisabCard {
+                Text("Report summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column { Text("Expense", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(expenseTotal), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
+                    Column(horizontalAlignment = Alignment.End) { Text("Income", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(incomeTotal), color = Color(0xFF079669), fontWeight = FontWeight.Bold) }
+                }
+                if (categoryTotals.isNotEmpty()) {
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                    categoryTotals.forEach { (id, total) ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(viewModel.categoryName(id))
+                            Text(formatMoney(total), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
         item {
             OutlinedTextField(
                 query, { query = it }, Modifier.fillMaxWidth(),
@@ -165,4 +189,3 @@ private fun EditTransactionDialog(
 }
 
 private fun formatMoney(amountMinor: Long): String = "৳ " + BigDecimal(amountMinor).movePointLeft(2).stripTrailingZeros().toPlainString()
-
