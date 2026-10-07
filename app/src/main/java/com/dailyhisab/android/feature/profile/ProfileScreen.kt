@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +18,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dailyhisab.android.BuildConfig
 import com.dailyhisab.android.core.designsystem.DailyHisabCard
+import com.dailyhisab.android.feature.auth.AuthScreen
+import com.dailyhisab.android.feature.auth.AuthUiState
+import com.dailyhisab.android.feature.auth.AuthUser
+import com.dailyhisab.android.feature.auth.AuthViewModel
 import java.math.BigDecimal
 
 private enum class ProfilePage { Main, Details, Personalization, Security, About }
@@ -27,17 +32,30 @@ fun ProfileScreen(
     profile: LocalProfile,
     preferences: ProfilePreferences,
     viewModel: ProfileViewModel = viewModel(),
+    authViewModel: AuthViewModel = viewModel(),
 ) {
     var page by remember { mutableStateOf(ProfilePage.Main) }
+    var showAuth by remember { mutableStateOf(false) }
+    val authState by authViewModel.state.collectAsState()
+    LaunchedEffect(authState.user) {
+        authState.user?.let { user ->
+            preferences.update { it.copy(displayName = user.displayName.ifBlank { it.displayName }, email = user.email) }
+            showAuth = false
+        }
+    }
+    if (showAuth && authState.user == null) {
+        AuthScreen(contentPadding, authState, authViewModel) { showAuth = false }
+        return
+    }
     when (page) {
-        ProfilePage.Main -> ProfileMain(contentPadding, profile, viewModel) { page = it }
-        ProfilePage.Details -> ProfileDetails(contentPadding, profile, preferences) { page = ProfilePage.Main }
+        ProfilePage.Main -> ProfileMain(
+            contentPadding, profile, viewModel, authState,
+            openAuth = { showAuth = true },
+            signOut = authViewModel::signOut,
+        ) { page = it }
+        ProfilePage.Details -> ProfileDetails(contentPadding, profile, preferences, authState.user) { page = ProfilePage.Main }
         ProfilePage.Personalization -> Personalization(contentPadding, profile, preferences) { page = ProfilePage.Main }
-        ProfilePage.Security -> InformationPage(contentPadding, "Security & password", listOf(
-            "Your finance data is stored locally on this device.",
-            "Create password, Google sign-in and password recovery will arrive with Authentication in Batch 7.",
-            "Never share your User ID or device backup with an untrusted person.",
-        )) { page = ProfilePage.Main }
+        ProfilePage.Security -> SecurityScreen(contentPadding, authState, authViewModel, { showAuth = true }) { page = ProfilePage.Main }
         ProfilePage.About -> InformationPage(contentPadding, "About Daily Hisab", listOf(
             "Daily Hisab is a native Kotlin expense tracker built for simple daily money management.",
             "Version ${BuildConfig.VERSION_NAME}",
@@ -51,10 +69,16 @@ private fun ProfileMain(
     contentPadding: PaddingValues,
     profile: LocalProfile,
     viewModel: ProfileViewModel,
+    authState: AuthUiState,
+    openAuth: () -> Unit,
+    signOut: () -> Unit,
     openPage: (ProfilePage) -> Unit,
 ) {
     val stats by viewModel.stats.collectAsState()
     var authMessage by remember { mutableStateOf(false) }
+    val user = authState.user
+    val shownName = user?.displayName?.ifBlank { profile.displayName } ?: profile.displayName
+    val shownEmail = user?.email?.ifBlank { profile.email } ?: profile.email
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(contentPadding),
         contentPadding = PaddingValues(20.dp),
@@ -65,12 +89,13 @@ private fun ProfileMain(
             DailyHisabCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(Modifier.size(72.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                        Box(contentAlignment = Alignment.Center) { Text(initials(profile.displayName), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+                        Box(contentAlignment = Alignment.Center) { Text(initials(shownName), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
                     }
                     Column(Modifier.padding(start = 16.dp).weight(1f)) {
-                        Text(profile.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(profile.email.ifBlank { "Local guest profile" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        AssistChip(onClick = { authMessage = true }, label = { Text("Create account") }, leadingIcon = { Icon(Icons.Filled.PersonAdd, null) })
+                        Text(shownName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(shownEmail.ifBlank { "Local guest profile" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (user == null) AssistChip(onClick = openAuth, label = { Text("Sign in or create account") }, leadingIcon = { Icon(Icons.Filled.PersonAdd, null) })
+                        else AssistChip(onClick = {}, label = { Text(if (user.isGoogleUser) "Google account" else "Email account") }, leadingIcon = { Icon(Icons.Filled.VerifiedUser, null) })
                     }
                     IconButton(onClick = { openPage(ProfilePage.Details) }) { Icon(Icons.Filled.ChevronRight, "Profile details") }
                 }
@@ -83,7 +108,7 @@ private fun ProfileMain(
             }
         }
         if (authMessage) item {
-            AssistChip(onClick = { authMessage = false }, label = { Text("Account creation will be enabled in Batch 7") }, leadingIcon = { Icon(Icons.Filled.Info, null) })
+            AssistChip(onClick = { authMessage = false }, label = { Text("Cloud data sync will be enabled in Batch 8") }, leadingIcon = { Icon(Icons.Filled.Info, null) })
         }
         item { Text("Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         item {
@@ -93,6 +118,10 @@ private fun ProfileMain(
                 ProfileMenu("Security & password", Icons.Filled.Security, { openPage(ProfilePage.Security) })
                 HorizontalDivider()
                 ProfileMenu("Backup & cloud sync", Icons.Filled.CloudUpload, { authMessage = true }, "Coming next")
+                if (user != null) {
+                    HorizontalDivider()
+                    ProfileMenu("Logout", Icons.AutoMirrored.Filled.Logout, signOut)
+                }
             }
         }
         item { Text("Preferences", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
@@ -116,15 +145,15 @@ private fun ProfileMain(
 }
 
 @Composable
-private fun ProfileDetails(contentPadding: PaddingValues, profile: LocalProfile, preferences: ProfilePreferences, back: () -> Unit) {
+private fun ProfileDetails(contentPadding: PaddingValues, profile: LocalProfile, preferences: ProfilePreferences, user: AuthUser?, back: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
     ScreenColumn(contentPadding, "Personal information", back) {
         DailyHisabCard {
-            DetailRow("Name", profile.displayName)
-            DetailRow("Email", profile.email.ifBlank { "Not connected" })
-            DetailRow("Account", "Local guest")
+            DetailRow("Name", user?.displayName?.ifBlank { profile.displayName } ?: profile.displayName)
+            DetailRow("Email", user?.email?.ifBlank { profile.email }?.ifBlank { "Not connected" } ?: "Not connected")
+            DetailRow("Account", if (user == null) "Local guest" else if (user.isGoogleUser) "Google account" else "Email account")
             Text("User ID", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(profile.userId, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(user?.uid ?: profile.userId, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("Use this ID when contacting support.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
             Button(onClick = { editing = true }, modifier = Modifier.fillMaxWidth()) { Text("Edit profile") }
@@ -142,6 +171,52 @@ private fun Personalization(contentPadding: PaddingValues, profile: LocalProfile
         SettingChoices("Design", listOf("Aurora", "Default"), profile.themeStyle) { preferences.update { p -> p.copy(themeStyle = it) } }
         SettingChoices("Language", listOf("Default", "বাংলা", "English"), profile.language) { preferences.update { p -> p.copy(language = it) } }
         SettingChoices("Currency", listOf("BDT", "USD"), profile.currency) { preferences.update { p -> p.copy(currency = it) } }
+    }
+}
+
+@Composable
+private fun SecurityScreen(
+    contentPadding: PaddingValues,
+    state: AuthUiState,
+    viewModel: AuthViewModel,
+    openAuth: () -> Unit,
+    back: () -> Unit,
+) {
+    var email by remember(state.user?.email) { mutableStateOf(state.user?.email.orEmpty()) }
+    var password by remember { mutableStateOf("") }
+    var visible by remember { mutableStateOf(false) }
+    ScreenColumn(contentPadding, "Security & password", back) {
+        if (state.user == null) {
+            DailyHisabCard {
+                Text("Sign in to manage password security.", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = openAuth, modifier = Modifier.fillMaxWidth()) { Text("Sign in or create account") }
+            }
+        } else {
+            DailyHisabCard {
+                DetailRow("Signed in email", state.user.email)
+                Text(if (state.user.hasPassword) "Change password" else "Create password for this Google account", fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    password, { password = it }, Modifier.fillMaxWidth(), label = { Text("New password") }, singleLine = true,
+                    visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    trailingIcon = { IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null) } },
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = { if (state.user.hasPassword) viewModel.changePassword(password) else viewModel.createPassword(password) },
+                    modifier = Modifier.fillMaxWidth(), enabled = !state.busy,
+                ) { Text(if (state.user.hasPassword) "Change password" else "Create password") }
+            }
+            DailyHisabCard {
+                Text("Forgot password", fontWeight = FontWeight.Bold)
+                OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(onClick = { viewModel.sendPasswordReset(email) }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Send reset email") }
+            }
+        }
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
 }
 
