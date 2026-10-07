@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dailyhisab.android.data.local.DailyHisabDatabase
 import com.dailyhisab.android.data.repository.RoomFinanceRepository
 import com.dailyhisab.android.domain.model.Category
+import com.dailyhisab.android.domain.model.DefaultCategories
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -19,7 +20,7 @@ class CategoryViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch {
             if (database.financeDao().categoryCount() == 0) {
-                defaultCategories.forEach { repository.saveCategory(it) }
+                DefaultCategories.forEach { repository.saveCategory(it) }
             }
         }
     }
@@ -51,13 +52,4 @@ class CategoryViewModel(application: Application) : AndroidViewModel(application
             repository.updateCategoryOrder(list.map(Category::id))
         }
     }
-
-    private val defaultCategories = listOf(
-        Category(name = "Breakfast", iconKey = "restaurant", colorArgb = 0xFFFF9D00, position = 0, isDefault = true),
-        Category(name = "Transport", iconKey = "transport", colorArgb = 0xFF0875D1, position = 1, isDefault = true),
-        Category(name = "Lunch", iconKey = "restaurant", colorArgb = 0xFFFF7314, position = 2, isDefault = true),
-        Category(name = "Shopping", iconKey = "shopping", colorArgb = 0xFF079669, position = 3, isDefault = true),
-        Category(name = "Other", iconKey = "category", colorArgb = 0xFF7146E8, position = 4, isDefault = true),
-    )
 }
-

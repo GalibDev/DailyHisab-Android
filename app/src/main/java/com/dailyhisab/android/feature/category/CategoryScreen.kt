@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,7 +17,7 @@ import com.dailyhisab.android.core.designsystem.DailyHisabCard
 import com.dailyhisab.android.domain.model.Category
 
 @Composable
-fun CategoryScreen(contentPadding: PaddingValues, viewModel: CategoryViewModel = viewModel()) {
+fun CategoryScreen(contentPadding: PaddingValues, onBack: (() -> Unit)? = null, viewModel: CategoryViewModel = viewModel()) {
     val categories by viewModel.categories.collectAsState()
     var editing by remember { mutableStateOf<Category?>(null) }
     var dialogOpen by remember { mutableStateOf(false) }
@@ -28,6 +29,7 @@ fun CategoryScreen(contentPadding: PaddingValues, viewModel: CategoryViewModel =
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 Column(Modifier.weight(1f)) {
                     Text("Categories", style = MaterialTheme.typography.headlineMedium)
                     Text("Add, edit and arrange expense categories", color = MaterialTheme.colorScheme.onSurfaceVariant)

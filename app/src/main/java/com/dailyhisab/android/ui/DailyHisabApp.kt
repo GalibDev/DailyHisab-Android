@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.dailyhisab.android.feature.home.HomeScreen
 import com.dailyhisab.android.feature.category.CategoryScreen
+import com.dailyhisab.android.feature.transaction.AddTransactionScreen
 import com.dailyhisab.android.feature.navigation.PrimaryPlaceholderScreen
 
 private enum class PrimaryDestination(val label: String, val icon: ImageVector) {
@@ -37,6 +38,7 @@ private enum class PrimaryDestination(val label: String, val icon: ImageVector) 
 @Composable
 fun DailyHisabApp() {
     var destination by rememberSaveable { mutableStateOf(PrimaryDestination.Home) }
+    var managingCategories by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
@@ -48,11 +50,11 @@ fun DailyHisabApp() {
                 PrimaryDestination.entries.forEach { item ->
                     NavigationBarItem(
                         selected = destination == item,
-                        onClick = { destination = item },
+                        onClick = { destination = item; if (item != PrimaryDestination.Add) managingCategories = false },
                         icon = {
                             if (item == PrimaryDestination.Add) {
                                 FloatingActionButton(
-                                    onClick = { destination = item },
+                                    onClick = { destination = item; managingCategories = false },
                                     containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = MaterialTheme.colorScheme.onPrimary,
                                 ) { Icon(item.icon, contentDescription = item.label) }
@@ -66,7 +68,11 @@ fun DailyHisabApp() {
     ) { contentPadding ->
         when (destination) {
             PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding)
-            PrimaryDestination.Add -> CategoryScreen(contentPadding = contentPadding)
+            PrimaryDestination.Add -> if (managingCategories) {
+                CategoryScreen(contentPadding = contentPadding, onBack = { managingCategories = false })
+            } else {
+                AddTransactionScreen(contentPadding = contentPadding, onManageCategories = { managingCategories = true })
+            }
             else -> PrimaryPlaceholderScreen(destination.label, destination.icon, contentPadding)
         }
     }
