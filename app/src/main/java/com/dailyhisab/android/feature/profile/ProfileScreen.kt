@@ -23,8 +23,14 @@ import com.dailyhisab.android.feature.auth.AuthUiState
 import com.dailyhisab.android.feature.auth.AuthUser
 import com.dailyhisab.android.feature.auth.AuthViewModel
 import java.math.BigDecimal
+import com.dailyhisab.android.feature.sync.CloudSyncViewModel
+import com.dailyhisab.android.feature.sync.SyncPhase
+import com.dailyhisab.android.feature.sync.SyncUiState
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
-private enum class ProfilePage { Main, Details, Personalization, Security, About }
+private enum class ProfilePage { Main, Details, Personalization, Security, Sync, About }
 
 @Composable
 fun ProfileScreen(
@@ -33,10 +39,12 @@ fun ProfileScreen(
     preferences: ProfilePreferences,
     viewModel: ProfileViewModel = viewModel(),
     authViewModel: AuthViewModel = viewModel(),
+    cloudSyncViewModel: CloudSyncViewModel,
 ) {
     var page by remember { mutableStateOf(ProfilePage.Main) }
     var showAuth by remember { mutableStateOf(false) }
     val authState by authViewModel.state.collectAsState()
+    val syncState by cloudSyncViewModel.state.collectAsState()
     LaunchedEffect(authState.user) {
         authState.user?.let { user ->
             preferences.update { it.copy(displayName = user.displayName.ifBlank { it.displayName }, email = user.email) }
@@ -52,10 +60,12 @@ fun ProfileScreen(
             contentPadding, profile, viewModel, authState,
             openAuth = { showAuth = true },
             signOut = authViewModel::signOut,
+            syncState = syncState,
         ) { page = it }
         ProfilePage.Details -> ProfileDetails(contentPadding, profile, preferences, authState.user) { page = ProfilePage.Main }
         ProfilePage.Personalization -> Personalization(contentPadding, profile, preferences) { page = ProfilePage.Main }
         ProfilePage.Security -> SecurityScreen(contentPadding, authState, authViewModel, { showAuth = true }) { page = ProfilePage.Main }
+        ProfilePage.Sync -> CloudSyncScreen(contentPadding, authState.user, syncState, cloudSyncViewModel) { page = ProfilePage.Main }
         ProfilePage.About -> InformationPage(contentPadding, "About Daily Hisab", listOf(
             "Daily Hisab is a native Kotlin expense tracker built for simple daily money management.",
             "Version ${BuildConfig.VERSION_NAME}",
@@ -72,6 +82,7 @@ private fun ProfileMain(
     authState: AuthUiState,
     openAuth: () -> Unit,
     signOut: () -> Unit,
+    syncState: SyncUiState,
     openPage: (ProfilePage) -> Unit,
 ) {
     val stats by viewModel.stats.collectAsState()
@@ -117,7 +128,7 @@ private fun ProfileMain(
                 HorizontalDivider()
                 ProfileMenu("Security & password", Icons.Filled.Security, { openPage(ProfilePage.Security) })
                 HorizontalDivider()
-                ProfileMenu("Backup & cloud sync", Icons.Filled.CloudUpload, { authMessage = true }, "Coming next")
+                ProfileMenu("Backup & cloud sync", Icons.Filled.CloudUpload, { openPage(ProfilePage.Sync) }, syncLabel(syncState))
                 if (user != null) {
                     HorizontalDivider()
                     ProfileMenu("Logout", Icons.AutoMirrored.Filled.Logout, signOut)
@@ -142,6 +153,53 @@ private fun ProfileMain(
             }
         }
     }
+}
+
+@Composable
+private fun CloudSyncScreen(
+    contentPadding: PaddingValues,
+    user: AuthUser?,
+    state: SyncUiState,
+    viewModel: CloudSyncViewModel,
+    back: () -> Unit,
+) {
+    var confirmRestore by remember { mutableStateOf(false) }
+    ScreenColumn(contentPadding, "Backup & cloud sync", back) {
+        DailyHisabCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    when (state.phase) {
+                        SyncPhase.Synced -> Icons.Filled.CloudDone
+                        SyncPhase.Syncing -> Icons.Filled.Sync
+                        SyncPhase.Offline -> Icons.Filled.CloudOff
+                        SyncPhase.Error -> Icons.Filled.Error
+                        SyncPhase.Guest -> Icons.Filled.CloudQueue
+                    },
+                    null,
+                    tint = if (state.phase == SyncPhase.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text(syncLabel(state), fontWeight = FontWeight.Bold)
+                    Text(state.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.lastSyncEpochMillis > 0) Text("Last sync: ${formatSyncTime(state.lastSyncEpochMillis)}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        if (user == null) {
+            Text("Sign in from Profile to enable private cloud backup.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Button(onClick = viewModel::backupNow, Modifier.fillMaxWidth(), enabled = state.phase != SyncPhase.Syncing) { Text("Back up now") }
+            OutlinedButton(onClick = { confirmRestore = true }, Modifier.fillMaxWidth(), enabled = state.phase != SyncPhase.Syncing) { Text("Restore from cloud") }
+            Text("Automatic sync runs after local changes. If local and cloud data conflict, the newest backup wins. First sign-in merges guest data with the account backup.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    if (confirmRestore) AlertDialog(
+        onDismissRequest = { confirmRestore = false },
+        title = { Text("Restore cloud backup?") },
+        text = { Text("Current local finance data will be replaced by the latest cloud backup.") },
+        confirmButton = { TextButton(onClick = { confirmRestore = false; viewModel.restoreNow() }) { Text("Restore") } },
+        dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -279,3 +337,12 @@ private fun EditProfileDialog(profile: LocalProfile, dismiss: () -> Unit, save: 
 
 internal fun initials(name: String): String = name.trim().split(Regex("\\s+")).filter(String::isNotBlank).take(2).mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("").ifBlank { "G" }
 private fun money(value: Long) = "৳ " + BigDecimal(value).movePointLeft(2).stripTrailingZeros().toPlainString()
+private fun syncLabel(state: SyncUiState) = when (state.phase) {
+    SyncPhase.Guest -> "Sign in required"
+    SyncPhase.Syncing -> "Syncing"
+    SyncPhase.Synced -> "Synced"
+    SyncPhase.Offline -> "Waiting for internet"
+    SyncPhase.Error -> "Sync needs attention"
+}
+private fun formatSyncTime(epochMillis: Long): String = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
+    .format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))

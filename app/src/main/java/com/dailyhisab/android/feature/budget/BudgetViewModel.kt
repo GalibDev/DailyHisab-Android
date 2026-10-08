@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import com.dailyhisab.android.data.sync.CloudSyncSignals
 
 data class BudgetProgress(val budget: BudgetEntity, val spentMinor: Long)
 
@@ -31,6 +32,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun save(budget: BudgetEntity) = viewModelScope.launch { dao.insertBudget(budget) }
-    fun delete(id: Long) = viewModelScope.launch { dao.deleteBudget(id) }
+    fun save(budget: BudgetEntity) = viewModelScope.launch { dao.insertBudget(budget); CloudSyncSignals.localDataChanged() }
+    fun delete(id: Long) = viewModelScope.launch { dao.deleteBudget(id); CloudSyncSignals.localDataChanged() }
 }

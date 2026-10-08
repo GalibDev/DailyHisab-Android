@@ -12,6 +12,7 @@ import com.dailyhisab.android.domain.repository.FinanceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
+import com.dailyhisab.android.data.sync.CloudSyncSignals
 
 class RoomFinanceRepository(private val database: DailyHisabDatabase) : FinanceRepository {
     private val dao = database.financeDao()
@@ -31,19 +32,20 @@ class RoomFinanceRepository(private val database: DailyHisabDatabase) : FinanceR
             .map { FinanceSummary(it.expenseMinor, it.incomeMinor) }
 
     override suspend fun saveTransaction(transaction: FinanceTransaction): Long =
-        dao.insertTransaction(transaction.toEntity())
+        dao.insertTransaction(transaction.toEntity()).also { CloudSyncSignals.localDataChanged() }
 
-    override suspend fun deleteTransaction(id: Long) = dao.deleteTransaction(id)
+    override suspend fun deleteTransaction(id: Long) = dao.deleteTransaction(id).also { CloudSyncSignals.localDataChanged() }
 
-    override suspend fun saveCategory(category: Category): Long = dao.insertCategory(category.toEntity())
+    override suspend fun saveCategory(category: Category): Long = dao.insertCategory(category.toEntity()).also { CloudSyncSignals.localDataChanged() }
 
-    override suspend fun deleteCategory(id: Long) = dao.deleteCategory(id)
+    override suspend fun deleteCategory(id: Long) = dao.deleteCategory(id).also { CloudSyncSignals.localDataChanged() }
 
     override suspend fun updateCategoryOrder(categoryIds: List<Long>) {
         database.withTransaction {
             val byId = dao.categoriesByIds(categoryIds).associateBy(CategoryEntity::id)
             dao.updateCategories(categoryIds.mapIndexedNotNull { index, id -> byId[id]?.copy(position = index) })
         }
+        CloudSyncSignals.localDataChanged()
     }
 }
 

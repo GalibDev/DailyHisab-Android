@@ -33,6 +33,8 @@ import com.dailyhisab.android.feature.navigation.PrimaryPlaceholderScreen
 import com.dailyhisab.android.feature.profile.LocalProfile
 import com.dailyhisab.android.feature.profile.ProfilePreferences
 import com.dailyhisab.android.feature.profile.ProfileScreen
+import com.dailyhisab.android.feature.sync.CloudSyncViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 private enum class PrimaryDestination(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home), Reports("Reports", Icons.Filled.BarChart),
@@ -42,6 +44,7 @@ private enum class PrimaryDestination(val label: String, val icon: ImageVector) 
 
 @Composable
 fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
+    val cloudSyncViewModel: CloudSyncViewModel = viewModel()
     var destination by rememberSaveable { mutableStateOf(PrimaryDestination.Home) }
     var managingCategories by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -75,7 +78,7 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
             PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding)
             PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding)
             PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
-            PrimaryDestination.Profile -> ProfileScreen(contentPadding, profile, preferences)
+            PrimaryDestination.Profile -> ProfileScreen(contentPadding, profile, preferences, cloudSyncViewModel = cloudSyncViewModel)
             PrimaryDestination.Add -> if (managingCategories) {
                 CategoryScreen(contentPadding = contentPadding, onBack = { managingCategories = false })
             } else {

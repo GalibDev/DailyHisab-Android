@@ -16,6 +16,30 @@ data class SummaryRow(val expenseMinor: Long, val incomeMinor: Long)
 
 @Dao
 interface FinanceDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLoans(loans: List<LoanEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgets(budgets: List<BudgetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactions(transactions: List<TransactionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(categories: List<CategoryEntity>)
+
+    @Query("DELETE FROM transactions")
+    suspend fun clearTransactions()
+
+    @Query("DELETE FROM categories")
+    suspend fun clearCategories()
+
+    @Query("DELETE FROM budgets")
+    suspend fun clearBudgets()
+
+    @Query("DELETE FROM loans")
+    suspend fun clearLoans()
+
     @Query("SELECT * FROM loans ORDER BY dueEpochDay, updatedAtEpochMillis DESC")
     fun observeLoans(): Flow<List<LoanEntity>>
 
