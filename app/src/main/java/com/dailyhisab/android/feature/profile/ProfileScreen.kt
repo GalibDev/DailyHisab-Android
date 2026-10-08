@@ -69,7 +69,7 @@ fun ProfileScreen(
         ProfilePage.About -> InformationPage(contentPadding, "About Daily Hisab", listOf(
             "Daily Hisab is a native Kotlin expense tracker built for simple daily money management.",
             "Version ${BuildConfig.VERSION_NAME}",
-            "Privacy: current financial and profile data stays on this device until cloud sync is enabled.",
+            "Privacy: signed-in financial data is encrypted in transit and synced with your Daily Hisab account.",
         )) { page = ProfilePage.Main }
     }
 }

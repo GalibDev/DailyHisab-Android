@@ -6,10 +6,17 @@ import com.dailyhisab.android.data.local.entity.BudgetEntity
 import com.dailyhisab.android.data.local.entity.CategoryEntity
 import com.dailyhisab.android.data.local.entity.LoanEntity
 import com.dailyhisab.android.data.local.entity.TransactionEntity
-import com.google.firebase.firestore.FirebaseFirestore
+import com.dailyhisab.android.domain.model.DefaultCategories
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
-import com.dailyhisab.android.domain.model.DefaultCategories
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 data class FinanceSnapshot(
     val categories: List<CategoryEntity>,
@@ -21,9 +28,10 @@ data class FinanceSnapshot(
     val hasData get() = categories.isNotEmpty() || transactions.isNotEmpty() || budgets.isNotEmpty() || loans.isNotEmpty()
 }
 
+/** Shares the exact Realtime Database user paths used by dailyhisab.xyz. */
 class CloudSyncRepository(private val database: DailyHisabDatabase) {
     private val dao = database.financeDao()
-    private val firestore = FirebaseFirestore.getInstance()
+    private val realtime = FirebaseDatabase.getInstance().reference
 
     suspend fun readLocal(updatedAt: Long = System.currentTimeMillis()) = FinanceSnapshot(
         categories = dao.observeCategories().first(),
@@ -34,12 +42,26 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
     )
 
     suspend fun readRemote(uid: String): FinanceSnapshot? {
-        val document = document(uid).get().await()
-        return if (!document.exists()) null else snapshotFromMap(document.data.orEmpty())
+        val appData = realtime.child("users").child(uid).child("appData").get().await()
+        if (!appData.exists()) return null
+        return snapshotFromRealtime(appData)
     }
 
     suspend fun upload(uid: String, snapshot: FinanceSnapshot) {
-        document(uid).set(snapshot.toMap()).await()
+        val categoryById = snapshot.categories.associateBy { it.id }
+        val now = snapshot.updatedAt
+        val updates = mapOf<String, Any?>(
+            "finance/categories" to snapshot.categories.sortedBy { it.position }.map { it.name },
+            "finance/entries" to snapshot.transactions.map { it.toWebEntry(categoryById[it.categoryId]?.name.orEmpty()) },
+            "finance/updatedAt" to now,
+            "loans/loans" to snapshot.loans.map { it.toWebLoan() },
+            "loans/updatedAt" to now,
+            "nativeAndroid/categories" to snapshot.categories.map { it.toNativeCategory() },
+            "nativeAndroid/budgets" to snapshot.budgets.map { it.toNativeBudget() },
+            "nativeAndroid/updatedAt" to now,
+        )
+        // Preserve website-only reminders, recurring expenses and wallet data.
+        realtime.child("users").child(uid).child("appData").updateChildren(updates).await()
     }
 
     suspend fun replaceLocal(snapshot: FinanceSnapshot) = database.withTransaction {
@@ -60,9 +82,6 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
         dao.clearLoans()
         dao.insertCategories(DefaultCategories.map { CategoryEntity(name = it.name, iconKey = it.iconKey, colorArgb = it.colorArgb, position = it.position, isDefault = it.isDefault) })
     }
-
-    private fun document(uid: String) = firestore.collection("users").document(uid)
-        .collection("backups").document("current")
 }
 
 internal fun mergeGuestWithRemote(local: FinanceSnapshot, remote: FinanceSnapshot): FinanceSnapshot {
@@ -102,6 +121,131 @@ internal fun mergeGuestWithRemote(local: FinanceSnapshot, remote: FinanceSnapsho
     )
 }
 
+private fun snapshotFromRealtime(appData: DataSnapshot): FinanceSnapshot {
+    val finance = appData.child("finance")
+    val loansNode = appData.child("loans")
+    val native = appData.child("nativeAndroid")
+    val metadata = native.child("categories").records().associateBy { it.string("name").lowercase() }
+    val categoryNames = finance.child("categories").values().mapNotNull { it as? String }.filter { it.isNotBlank() }
+    val namesFromEntries = finance.child("entries").records().map { it.string("category") }.filter { it.isNotBlank() }
+    val names = (categoryNames + namesFromEntries).distinctBy { it.lowercase() }
+    val categories = names.mapIndexed { index, name ->
+        val stored = metadata[name.lowercase()]
+        val fallback = DefaultCategories.firstOrNull { it.name.equals(name, true) }
+        CategoryEntity(
+            id = stored?.long("id")?.takeIf { it > 0 } ?: (index + 1).toLong(),
+            name = name,
+            iconKey = stored?.string("iconKey")?.takeIf { it.isNotBlank() } ?: fallback?.iconKey ?: "category",
+            colorArgb = stored?.long("colorArgb")?.takeIf { it != 0L } ?: fallback?.colorArgb ?: 0xFF4F46E5,
+            position = index,
+            isDefault = stored?.boolean("isDefault") ?: (fallback?.isDefault ?: false),
+        )
+    }.ifEmpty {
+        DefaultCategories.mapIndexed { index, item -> CategoryEntity((index + 1).toLong(), item.name, item.iconKey, item.colorArgb, index, item.isDefault) }
+    }
+    val categoryIds = categories.associate { it.name.lowercase() to it.id }
+    val fallbackCategoryId = categories.first().id
+    val transactions = finance.child("entries").records().mapNotNull { row ->
+        val date = row.string("date").toEpochDayOrNull() ?: return@mapNotNull null
+        val type = row.string("type").lowercase().takeIf { it == "expense" || it == "income" } ?: return@mapNotNull null
+        val amount = row.number("amount") ?: return@mapNotNull null
+        val id = row.long("id").takeIf { it > 0 } ?: return@mapNotNull null
+        val timestamp = row.string("date").toEpochMillis(row.string("time"))
+        TransactionEntity(
+            id = id,
+            amountMinor = amount.toMinorUnits(),
+            type = type.replaceFirstChar(Char::uppercase),
+            categoryId = categoryIds[row.string("category").lowercase()] ?: fallbackCategoryId,
+            dateEpochDay = date,
+            description = row.string("description"),
+            paymentMethod = row.string("method").ifBlank { "Cash" },
+            createdAtEpochMillis = timestamp,
+            updatedAtEpochMillis = timestamp,
+        )
+    }
+    val budgets = native.child("budgets").records().mapNotNull { row ->
+        row.string("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        BudgetEntity(row.long("id"), row.string("name"), row.long("amountMinor"), row.string("period"), row.long("startEpochDay"), row.long("endEpochDay"), row.long("updatedAtEpochMillis"))
+    }
+    val loans = loansNode.child("loans").records().mapNotNull { row ->
+        val amount = row.number("amount") ?: return@mapNotNull null
+        val person = row.string("person").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val payments = row.records("payments").mapNotNull { it.number("amount") }.sum()
+        LoanEntity(
+            id = row.long("id").takeIf { it > 0 } ?: return@mapNotNull null,
+            personName = person,
+            amountMinor = amount.toMinorUnits(),
+            repaidMinor = payments.toMinorUnits(),
+            direction = if (row.string("type") == "lent") "Lent" else "Borrowed",
+            dueEpochDay = row.string("dueDate").toEpochDayOrNull() ?: LocalDate.now().toEpochDay(),
+            note = row.string("note"),
+            reminderEnabled = true,
+            updatedAtEpochMillis = loansNode.child("updatedAt").getValue(Long::class.java) ?: 0L,
+        )
+    }
+    return FinanceSnapshot(
+        categories,
+        transactions,
+        budgets,
+        loans,
+        maxOf(finance.longValue("updatedAt"), loansNode.longValue("updatedAt"), native.longValue("updatedAt")),
+    )
+}
+
+private fun TransactionEntity.toWebEntry(categoryName: String) = mapOf(
+    "id" to id,
+    "date" to LocalDate.ofEpochDay(dateEpochDay).toString(),
+    "category" to categoryName.ifBlank { "Other" },
+    "description" to description,
+    "amount" to amountMinor.toMajorUnits(),
+    "time" to Instant.ofEpochMilli(createdAtEpochMillis).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
+    "method" to paymentMethod,
+    "type" to type.lowercase(),
+)
+
+private fun LoanEntity.toWebLoan(): Map<String, Any> {
+    val updatedDate = Instant.ofEpochMilli(updatedAtEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+    val payments = if (repaidMinor > 0) listOf(mapOf("id" to updatedAtEpochMillis, "amount" to repaidMinor.toMajorUnits(), "date" to updatedDate)) else emptyList()
+    return mapOf(
+        "id" to id,
+        "type" to direction.lowercase(),
+        "person" to personName,
+        "amount" to amountMinor.toMajorUnits(),
+        "startDate" to updatedDate,
+        "dueDate" to LocalDate.ofEpochDay(dueEpochDay).toString(),
+        "note" to note,
+        "payments" to payments,
+    )
+}
+
+private fun CategoryEntity.toNativeCategory() = mapOf("id" to id, "name" to name, "iconKey" to iconKey, "colorArgb" to colorArgb, "position" to position, "isDefault" to isDefault)
+private fun BudgetEntity.toNativeBudget() = mapOf("id" to id, "name" to name, "amountMinor" to amountMinor, "period" to period, "startEpochDay" to startEpochDay, "endEpochDay" to endEpochDay, "updatedAtEpochMillis" to updatedAtEpochMillis)
+private fun TransactionEntity.uniqueKey() = listOf(amountMinor, type, categoryId, dateEpochDay, description.trim(), paymentMethod, createdAtEpochMillis).joinToString("|")
+private fun Long.toMajorUnits() = BigDecimal.valueOf(this, 2).toDouble()
+private fun Double.toMinorUnits() = BigDecimal.valueOf(this).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact()
+private fun String.toEpochDayOrNull() = runCatching { LocalDate.parse(take(10)).toEpochDay() }.getOrNull()
+private fun String.toEpochMillis(time: String): Long = runCatching {
+    val safeTime = time.takeIf { it.matches(Regex("\\d{2}:\\d{2}")) } ?: "00:00"
+    java.time.LocalDateTime.parse("${take(10)}T$safeTime").atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+}.getOrDefault(System.currentTimeMillis())
+
+private fun DataSnapshot.values(): List<Any?> = when (val stored = value) {
+    is List<*> -> stored
+    is Map<*, *> -> stored.values.toList()
+    else -> children.map { it.value }.toList()
+}
+private fun DataSnapshot.records(): List<Map<*, *>> = values().mapNotNull { it as? Map<*, *> }
+private fun DataSnapshot.longValue(key: String) = child(key).getValue(Long::class.java) ?: 0L
+private fun Map<*, *>.records(key: String): List<Map<*, *>> = when (val stored = this[key]) {
+    is List<*> -> stored.mapNotNull { it as? Map<*, *> }
+    is Map<*, *> -> stored.values.mapNotNull { it as? Map<*, *> }
+    else -> emptyList()
+}
+private fun Map<*, *>.long(key: String) = (this[key] as? Number)?.toLong() ?: 0L
+private fun Map<*, *>.number(key: String) = (this[key] as? Number)?.toDouble()
+private fun Map<*, *>.string(key: String) = this[key] as? String ?: ""
+private fun Map<*, *>.boolean(key: String) = this[key] as? Boolean ?: false
+
 private fun mergeBudgets(local: List<BudgetEntity>, remote: List<BudgetEntity>): List<BudgetEntity> {
     val result = local.toMutableList()
     var nextId = (result.maxOfOrNull { it.id } ?: 0L) + 1
@@ -123,37 +267,3 @@ private fun mergeLoans(local: List<LoanEntity>, remote: List<LoanEntity>): List<
     }
     return result
 }
-
-private fun TransactionEntity.uniqueKey() = listOf(amountMinor, type, categoryId, dateEpochDay, description.trim(), paymentMethod, createdAtEpochMillis).joinToString("|")
-
-private fun FinanceSnapshot.toMap(): Map<String, Any> = mapOf(
-    "schemaVersion" to 1L,
-    "updatedAt" to updatedAt,
-    "categories" to categories.map { mapOf("id" to it.id, "name" to it.name, "iconKey" to it.iconKey, "colorArgb" to it.colorArgb, "position" to it.position.toLong(), "isDefault" to it.isDefault) },
-    "transactions" to transactions.map { mapOf("id" to it.id, "amountMinor" to it.amountMinor, "type" to it.type, "categoryId" to it.categoryId, "dateEpochDay" to it.dateEpochDay, "description" to it.description, "paymentMethod" to it.paymentMethod, "createdAtEpochMillis" to it.createdAtEpochMillis, "updatedAtEpochMillis" to it.updatedAtEpochMillis) },
-    "budgets" to budgets.map { mapOf("id" to it.id, "name" to it.name, "amountMinor" to it.amountMinor, "period" to it.period, "startEpochDay" to it.startEpochDay, "endEpochDay" to it.endEpochDay, "updatedAtEpochMillis" to it.updatedAtEpochMillis) },
-    "loans" to loans.map { mapOf("id" to it.id, "personName" to it.personName, "amountMinor" to it.amountMinor, "repaidMinor" to it.repaidMinor, "direction" to it.direction, "dueEpochDay" to it.dueEpochDay, "note" to it.note, "reminderEnabled" to it.reminderEnabled, "updatedAtEpochMillis" to it.updatedAtEpochMillis) },
-)
-
-private fun snapshotFromMap(data: Map<String, Any>): FinanceSnapshot {
-    fun maps(key: String) = (data[key] as? List<*>)?.mapNotNull { it as? Map<*, *> }.orEmpty()
-    return FinanceSnapshot(
-        categories = maps("categories").mapNotNull { row ->
-            CategoryEntity(row.long("id"), row.string("name"), row.string("iconKey"), row.long("colorArgb"), row.long("position").toInt(), row.boolean("isDefault"))
-        },
-        transactions = maps("transactions").mapNotNull { row ->
-            TransactionEntity(row.long("id"), row.long("amountMinor"), row.string("type"), row.long("categoryId"), row.long("dateEpochDay"), row.string("description"), row.string("paymentMethod"), row.long("createdAtEpochMillis"), row.long("updatedAtEpochMillis"))
-        },
-        budgets = maps("budgets").mapNotNull { row ->
-            BudgetEntity(row.long("id"), row.string("name"), row.long("amountMinor"), row.string("period"), row.long("startEpochDay"), row.long("endEpochDay"), row.long("updatedAtEpochMillis"))
-        },
-        loans = maps("loans").mapNotNull { row ->
-            LoanEntity(row.long("id"), row.string("personName"), row.long("amountMinor"), row.long("repaidMinor"), row.string("direction"), row.long("dueEpochDay"), row.string("note"), row.boolean("reminderEnabled"), row.long("updatedAtEpochMillis"))
-        },
-        updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: 0L,
-    )
-}
-
-private fun Map<*, *>.long(key: String) = (this[key] as? Number)?.toLong() ?: 0L
-private fun Map<*, *>.string(key: String) = this[key] as? String ?: ""
-private fun Map<*, *>.boolean(key: String) = this[key] as? Boolean ?: false
