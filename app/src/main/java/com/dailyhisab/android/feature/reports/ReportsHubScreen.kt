@@ -13,8 +13,8 @@ import com.dailyhisab.android.feature.history.TransactionHistoryScreen
 import com.dailyhisab.android.feature.loan.LoanScreen
 
 @Composable
-fun ReportsHubScreen(contentPadding: PaddingValues) {
-    var section by remember { mutableIntStateOf(0) }
+fun ReportsHubScreen(contentPadding: PaddingValues, initialSection: Int = 0) {
+    var section by remember(initialSection) { mutableIntStateOf(initialSection) }
     val nestedPadding = PaddingValues(
         top = contentPadding.calculateTopPadding() + 58.dp,
         bottom = contentPadding.calculateBottomPadding(),

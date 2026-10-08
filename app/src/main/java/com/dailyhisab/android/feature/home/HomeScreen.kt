@@ -32,6 +32,7 @@ fun HomeScreen(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(),
+    onMenuClick: () -> Unit = {},
 ) {
     val summary by viewModel.summary.collectAsState()
     LazyColumn(
@@ -39,7 +40,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item { HomeHeader() }
+        item { HomeHeader(onMenuClick) }
         item { OverviewCard(summary) }
         item { QuickAddCard() }
         item { StatisticsRow(summary) }
@@ -55,8 +56,9 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader() {
+private fun HomeHeader(onMenuClick: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onMenuClick) { Icon(Icons.Filled.Menu, "Open menu") }
         Box(
             Modifier.size(54.dp).clip(RoundedCornerShape(16.dp)).background(DailyBlue),
             contentAlignment = Alignment.Center,

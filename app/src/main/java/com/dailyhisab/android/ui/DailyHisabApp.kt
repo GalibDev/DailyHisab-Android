@@ -1,24 +1,14 @@
 package com.dailyhisab.android.ui
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,7 +24,10 @@ import com.dailyhisab.android.feature.profile.LocalProfile
 import com.dailyhisab.android.feature.profile.ProfilePreferences
 import com.dailyhisab.android.feature.profile.ProfileScreen
 import com.dailyhisab.android.feature.sync.CloudSyncViewModel
+import com.dailyhisab.android.feature.auth.AuthViewModel
+import com.dailyhisab.android.feature.home.HomeViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 
 private enum class PrimaryDestination(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home), Reports("Reports", Icons.Filled.BarChart),
@@ -45,44 +38,93 @@ private enum class PrimaryDestination(val label: String, val icon: ImageVector) 
 @Composable
 fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
     val cloudSyncViewModel: CloudSyncViewModel = viewModel()
+    val authViewModel: AuthViewModel = viewModel()
+    val homeViewModel: HomeViewModel = viewModel()
+    val authState by authViewModel.state.collectAsState()
+    val summary by homeViewModel.summary.collectAsState()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     var destination by rememberSaveable { mutableStateOf(PrimaryDestination.Home) }
     var managingCategories by rememberSaveable { mutableStateOf(false) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            NavigationBar(
-                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp,
-            ) {
-                PrimaryDestination.entries.forEach { item ->
-                    NavigationBarItem(
-                        selected = destination == item,
-                        onClick = { destination = item; if (item != PrimaryDestination.Add) managingCategories = false },
-                        icon = {
-                            if (item == PrimaryDestination.Add) {
-                                FloatingActionButton(
-                                    onClick = { destination = item; managingCategories = false },
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                ) { Icon(item.icon, contentDescription = item.label) }
-                            } else Icon(item.icon, contentDescription = item.label)
-                        },
-                        label = { Text(item.label) },
-                    )
-                }
-            }
+    var reportsSection by rememberSaveable { mutableIntStateOf(0) }
+    var drawerRoute by rememberSaveable { mutableStateOf(DrawerRoute.Dashboard) }
+
+    fun navigate(route: DrawerRoute) {
+        drawerRoute = route
+        managingCategories = route == DrawerRoute.Categories
+        when (route) {
+            DrawerRoute.Dashboard -> destination = PrimaryDestination.Home
+            DrawerRoute.Expenses, DrawerRoute.Reports -> { destination = PrimaryDestination.Reports; reportsSection = 0 }
+            DrawerRoute.Categories -> destination = PrimaryDestination.Add
+            DrawerRoute.Budgets -> { destination = PrimaryDestination.Reports; reportsSection = 1 }
+            DrawerRoute.Loans -> { destination = PrimaryDestination.Reports; reportsSection = 2 }
+            DrawerRoute.Calendar -> destination = PrimaryDestination.Calendar
+            DrawerRoute.Backup, DrawerRoute.Profile -> destination = PrimaryDestination.Profile
+        }
+        scope.launch { drawerState.close() }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            AppDrawer(
+                profile = profile,
+                user = authState.user,
+                summary = summary,
+                selected = drawerRoute,
+                close = { scope.launch { drawerState.close() } },
+                navigate = ::navigate,
+                logout = { authViewModel.signOut(); scope.launch { drawerState.close() } },
+            )
         },
-    ) { contentPadding ->
-        when (destination) {
-            PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding)
-            PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding)
-            PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
-            PrimaryDestination.Profile -> ProfileScreen(contentPadding, profile, preferences, cloudSyncViewModel = cloudSyncViewModel)
-            PrimaryDestination.Add -> if (managingCategories) {
-                CategoryScreen(contentPadding = contentPadding, onBack = { managingCategories = false })
-            } else {
-                AddTransactionScreen(contentPadding = contentPadding, onManageCategories = { managingCategories = true })
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
+                NavigationBar(
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp,
+                ) {
+                    PrimaryDestination.entries.forEach { item ->
+                        NavigationBarItem(
+                            selected = destination == item,
+                            onClick = {
+                                destination = item
+                                managingCategories = false
+                                drawerRoute = when (item) {
+                                    PrimaryDestination.Home -> DrawerRoute.Dashboard
+                                    PrimaryDestination.Reports -> DrawerRoute.Reports
+                                    PrimaryDestination.Calendar -> DrawerRoute.Calendar
+                                    PrimaryDestination.Profile -> DrawerRoute.Profile
+                                    PrimaryDestination.Add -> drawerRoute
+                                }
+                            },
+                            icon = {
+                                if (item == PrimaryDestination.Add) {
+                                    FloatingActionButton(
+                                        onClick = { destination = item; managingCategories = false },
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ) { Icon(item.icon, contentDescription = item.label) }
+                                } else Icon(item.icon, contentDescription = item.label)
+                            },
+                            label = { Text(item.label) },
+                        )
+                    }
+                }
+            },
+        ) { contentPadding ->
+            when (destination) {
+                PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding, viewModel = homeViewModel, onMenuClick = { scope.launch { drawerState.open() } })
+                PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding, initialSection = reportsSection)
+                PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
+                PrimaryDestination.Profile -> ProfileScreen(contentPadding, profile, preferences, authViewModel = authViewModel, cloudSyncViewModel = cloudSyncViewModel)
+                PrimaryDestination.Add -> if (managingCategories) {
+                    CategoryScreen(contentPadding = contentPadding, onBack = { navigate(DrawerRoute.Dashboard) })
+                } else {
+                    AddTransactionScreen(contentPadding = contentPadding, onManageCategories = { managingCategories = true })
+                }
             }
         }
     }
