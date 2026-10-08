@@ -36,7 +36,7 @@ data class FinanceSnapshot(
 /** Shares the exact Realtime Database user paths used by dailyhisab.xyz. */
 class CloudSyncRepository(private val database: DailyHisabDatabase) {
     private val dao = database.financeDao()
-    private val realtime = FirebaseDatabase.getInstance().reference
+    private val realtime = realtimeDatabase.reference
 
     suspend fun readLocal(updatedAt: Long = System.currentTimeMillis()) = FinanceSnapshot(
         categories = dao.observeCategories().first(),
@@ -47,13 +47,16 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
     )
 
     suspend fun readRemote(uid: String): FinanceSnapshot? {
-        val appData = realtime.child("users").child(uid).child("appData").get().await()
+        val reference = realtime.child("users").child(uid).child("appData")
+        reference.keepSynced(true)
+        val appData = reference.get().await()
         if (!appData.exists()) return null
         return snapshotFromRealtime(appData)
     }
 
     fun observeRemote(uid: String): Flow<FinanceSnapshot?> = callbackFlow {
         val reference = realtime.child("users").child(uid).child("appData")
+        reference.keepSynced(true)
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 trySend(if (snapshot.exists()) snapshotFromRealtime(snapshot) else null)
@@ -101,6 +104,14 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
         dao.clearBudgets()
         dao.clearLoans()
         dao.insertCategories(DefaultCategories.map { CategoryEntity(name = it.name, iconKey = it.iconKey, colorArgb = it.colorArgb, position = it.position, isDefault = it.isDefault) })
+    }
+
+    companion object {
+        private val realtimeDatabase: FirebaseDatabase by lazy {
+            FirebaseDatabase.getInstance().also { database ->
+                runCatching { database.setPersistenceEnabled(true) }
+            }
+        }
     }
 }
 

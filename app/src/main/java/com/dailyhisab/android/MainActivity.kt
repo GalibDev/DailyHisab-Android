@@ -12,11 +12,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.dailyhisab.android.notifications.ReminderScheduler
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        ReminderScheduler.scheduleAll(applicationContext)
         setContent {
             val preferences = remember { ProfilePreferences(applicationContext) }
             val profile by preferences.profile.collectAsState()

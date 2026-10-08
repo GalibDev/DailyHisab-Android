@@ -1,5 +1,11 @@
 package com.dailyhisab.android.feature.profile
 
+import android.Manifest
+import android.app.TimePickerDialog
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -15,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dailyhisab.android.BuildConfig
 import com.dailyhisab.android.core.designsystem.DailyHisabCard
@@ -29,8 +36,11 @@ import com.dailyhisab.android.feature.sync.SyncUiState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import androidx.core.content.ContextCompat
+import com.dailyhisab.android.notifications.ReminderPreferences
+import com.dailyhisab.android.notifications.ReminderScheduler
 
-private enum class ProfilePage { Main, Details, Personalization, Security, Sync, About }
+private enum class ProfilePage { Main, Details, Personalization, Notifications, Security, Sync, About }
 
 @Composable
 fun ProfileScreen(
@@ -64,6 +74,7 @@ fun ProfileScreen(
         ) { page = it }
         ProfilePage.Details -> ProfileDetails(contentPadding, profile, preferences, authState.user) { page = ProfilePage.Main }
         ProfilePage.Personalization -> Personalization(contentPadding, profile, preferences) { page = ProfilePage.Main }
+        ProfilePage.Notifications -> NotificationSettingsScreen(contentPadding) { page = ProfilePage.Main }
         ProfilePage.Security -> SecurityScreen(contentPadding, authState, authViewModel, { showAuth = true }) { page = ProfilePage.Main }
         ProfilePage.Sync -> CloudSyncScreen(contentPadding, authState.user, syncState, cloudSyncViewModel) { page = ProfilePage.Main }
         ProfilePage.About -> InformationPage(contentPadding, "About Daily Hisab", listOf(
@@ -140,6 +151,8 @@ private fun ProfileMain(
             DailyHisabCard(contentPadding = PaddingValues(0.dp)) {
                 ProfileMenu("Personalization", Icons.Filled.Palette, { openPage(ProfilePage.Personalization) }, profile.themeStyle)
                 HorizontalDivider()
+                ProfileMenu("Notifications & reminders", Icons.Filled.NotificationsActive, { openPage(ProfilePage.Notifications) })
+                HorizontalDivider()
                 ProfileMenu("Language", Icons.Filled.Language, { openPage(ProfilePage.Personalization) }, profile.language)
                 HorizontalDivider()
                 ProfileMenu("Currency", Icons.Filled.CurrencyExchange, { openPage(ProfilePage.Personalization) }, profile.currency)
@@ -152,6 +165,66 @@ private fun ProfileMain(
                 ProfileMenu("Privacy policy", Icons.Filled.PrivacyTip, { openPage(ProfilePage.About) })
             }
         }
+    }
+}
+
+@Composable
+private fun NotificationSettingsScreen(contentPadding: PaddingValues, back: () -> Unit) {
+    val context = LocalContext.current
+    val preferences = remember { ReminderPreferences(context.applicationContext) }
+    val settings by preferences.settings.collectAsState()
+    var permissionGranted by remember {
+        mutableStateOf(Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionGranted = it }
+    fun update(change: (com.dailyhisab.android.notifications.ReminderSettings) -> com.dailyhisab.android.notifications.ReminderSettings) {
+        preferences.update(change)
+        ReminderScheduler.scheduleAll(context.applicationContext)
+    }
+    ScreenColumn(contentPadding, "Notifications & reminders", back) {
+        if (!permissionGranted && Build.VERSION.SDK_INT >= 33) {
+            DailyHisabCard {
+                Text("Notification permission required", fontWeight = FontWeight.Bold)
+                Text("Allow notifications to receive loan, budget and daily reminders.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }, Modifier.fillMaxWidth()) { Text("Allow notifications") }
+            }
+        }
+        ReminderToggle("Daily expense reminder", "Remind only when today's হিসাব is empty", settings.dailyEnabled) { update { s -> s.copy(dailyEnabled = it) } }
+        TimeSetting("Daily reminder time", settings.dailyHour, settings.dailyMinute) { hour, minute -> update { it.copy(dailyHour = hour, dailyMinute = minute) } }
+        ReminderToggle("Loan due notification", "Alerts one day before, on due date and when overdue", settings.loanEnabled) { update { s -> s.copy(loanEnabled = it) } }
+        TimeSetting("Loan reminder time", settings.loanHour, settings.loanMinute) { hour, minute -> update { it.copy(loanHour = hour, loanMinute = minute) } }
+        ReminderToggle("Budget limit warning", "Warn when spending reaches ${settings.budgetThreshold}%", settings.budgetEnabled) { update { s -> s.copy(budgetEnabled = it) } }
+        SettingChoices("Warning threshold", listOf("70%", "80%", "90%", "100%"), "${settings.budgetThreshold}%") {
+            update { current -> current.copy(budgetThreshold = it.removeSuffix("%").toInt()) }
+        }
+        Text("Reminders are restored automatically after device restart or app update.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun ReminderToggle(title: String, description: String, checked: Boolean, change: (Boolean) -> Unit) {
+    DailyHisabCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked, change)
+        }
+    }
+}
+
+@Composable
+private fun TimeSetting(title: String, hour: Int, minute: Int, change: (Int, Int) -> Unit) {
+    val context = LocalContext.current
+    OutlinedButton(
+        onClick = { TimePickerDialog(context, { _, h, m -> change(h, m) }, hour, minute, false).show() },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Filled.Schedule, null)
+        Spacer(Modifier.width(8.dp))
+        Text("$title: ${String.format("%02d:%02d", hour, minute)}")
     }
 }
 

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -71,6 +72,7 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
                 mutableState.value = mutableState.value.copy(phase = SyncPhase.Syncing, message = "Restoring from cloud…")
                 val remote = repository.readRemote(uid) ?: error("No cloud backup found")
                 repository.replaceLocal(remote)
+                preferences.lastRemoteApplied = remote.updatedAt
                 recordSuccess("Cloud backup restored")
             }.onFailure(::recordFailure)
         }
@@ -142,7 +144,18 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
         runCatching {
             mutableState.value = mutableState.value.copy(phase = SyncPhase.Syncing, message = "Backing up…")
             val snapshot = repository.readLocal(System.currentTimeMillis())
-            repository.upload(uid, snapshot)
+            var lastError: Throwable? = null
+            for (attempt in 0..2) {
+                try {
+                    repository.upload(uid, snapshot)
+                    lastError = null
+                    break
+                } catch (error: Throwable) {
+                    lastError = error
+                    if (attempt < 2) delay((attempt + 1) * 1_000L)
+                }
+            }
+            lastError?.let { throw it }
             preferences.lastRemoteApplied = snapshot.updatedAt
             recordSuccess(successMessage)
         }.onFailure(::recordFailure)

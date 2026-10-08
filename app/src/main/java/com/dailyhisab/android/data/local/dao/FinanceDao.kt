@@ -43,6 +43,9 @@ interface FinanceDao {
     @Query("SELECT * FROM loans ORDER BY dueEpochDay, updatedAtEpochMillis DESC")
     fun observeLoans(): Flow<List<LoanEntity>>
 
+    @Query("SELECT * FROM loans ORDER BY dueEpochDay")
+    suspend fun loans(): List<LoanEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLoan(loan: LoanEntity): Long
 
@@ -51,6 +54,9 @@ interface FinanceDao {
 
     @Query("SELECT * FROM budgets ORDER BY updatedAtEpochMillis DESC")
     fun observeBudgets(): Flow<List<BudgetEntity>>
+
+    @Query("SELECT * FROM budgets")
+    suspend fun budgets(): List<BudgetEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBudget(budget: BudgetEntity): Long
@@ -63,6 +69,9 @@ interface FinanceDao {
 
     @Query("SELECT * FROM transactions ORDER BY dateEpochDay DESC, createdAtEpochMillis DESC")
     fun observeTransactions(): Flow<List<TransactionEntity>>
+
+    @Query("SELECT * FROM transactions")
+    suspend fun transactions(): List<TransactionEntity>
 
     @Query("SELECT * FROM transactions WHERE dateEpochDay BETWEEN :startEpochDay AND :endEpochDay ORDER BY dateEpochDay DESC, createdAtEpochMillis DESC")
     fun observeTransactionsBetween(startEpochDay: Long, endEpochDay: Long): Flow<List<TransactionEntity>>
