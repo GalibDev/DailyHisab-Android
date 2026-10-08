@@ -21,13 +21,14 @@ fun ReportsHubScreen(contentPadding: PaddingValues, initialSection: Int = 0) {
     )
     Box(Modifier.fillMaxSize()) {
         when (section) {
-            0 -> TransactionHistoryScreen(nestedPadding)
+            0 -> ReportScreen(nestedPadding)
             1 -> BudgetScreen(nestedPadding)
-            else -> LoanScreen(nestedPadding)
+            2 -> LoanScreen(nestedPadding)
+            else -> TransactionHistoryScreen(nestedPadding)
         }
         SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(contentPadding).padding(horizontal = 20.dp)) {
-            listOf("History", "Budgets", "Loans").forEachIndexed { index, label ->
-                SegmentedButton(section == index, { section = index }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(label) }
+            listOf("Reports", "Budgets", "Loans", "History").forEachIndexed { index, label ->
+                SegmentedButton(section == index, { section = index }, shape = SegmentedButtonDefaults.itemShape(index, 4)) { Text(label) }
             }
         }
     }

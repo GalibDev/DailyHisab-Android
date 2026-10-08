@@ -54,7 +54,8 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
         managingCategories = route == DrawerRoute.Categories
         when (route) {
             DrawerRoute.Dashboard -> destination = PrimaryDestination.Home
-            DrawerRoute.Expenses, DrawerRoute.Reports -> { destination = PrimaryDestination.Reports; reportsSection = 0 }
+            DrawerRoute.Expenses -> { destination = PrimaryDestination.Reports; reportsSection = 3 }
+            DrawerRoute.Reports -> { destination = PrimaryDestination.Reports; reportsSection = 0 }
             DrawerRoute.Categories -> destination = PrimaryDestination.Add
             DrawerRoute.Budgets -> { destination = PrimaryDestination.Reports; reportsSection = 1 }
             DrawerRoute.Loans -> { destination = PrimaryDestination.Reports; reportsSection = 2 }
@@ -116,7 +117,12 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
             },
         ) { contentPadding ->
             when (destination) {
-                PrimaryDestination.Home -> HomeScreen(contentPadding = contentPadding, viewModel = homeViewModel, onMenuClick = { scope.launch { drawerState.open() } })
+                PrimaryDestination.Home -> HomeScreen(
+                    contentPadding = contentPadding,
+                    viewModel = homeViewModel,
+                    onMenuClick = { scope.launch { drawerState.open() } },
+                    onAddExpense = { destination = PrimaryDestination.Add; managingCategories = false },
+                )
                 PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding, initialSection = reportsSection)
                 PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
                 PrimaryDestination.Profile -> ProfileScreen(contentPadding, profile, preferences, authViewModel = authViewModel, cloudSyncViewModel = cloudSyncViewModel)

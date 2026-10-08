@@ -1,6 +1,7 @@
 package com.dailyhisab.android.feature.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -12,6 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,8 +37,12 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(),
     onMenuClick: () -> Unit = {},
+    onAddExpense: () -> Unit = {},
 ) {
     val summary by viewModel.summary.collectAsState()
+    val transactions by viewModel.transactions.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    var showDays by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(contentPadding),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
@@ -43,7 +51,7 @@ fun HomeScreen(
         item { HomeHeader(onMenuClick) }
         item { OverviewCard(summary) }
         item { QuickAddCard() }
-        item { StatisticsRow(summary) }
+        item { StatisticsRow(summary, onDaysClick = { showDays = true }) }
         item {
             DailyHisabCard(modifier = Modifier.fillMaxWidth()) {
                 DailyHisabSectionTitle(
@@ -53,6 +61,7 @@ fun HomeScreen(
             }
         }
     }
+    if (showDays) DayDetailsSheet(transactions, categories, dismiss = { showDays = false }, addExpense = { showDays = false; onAddExpense() })
 }
 
 @Composable
@@ -162,10 +171,10 @@ private fun QuickAction(label: String, icon: ImageVector, color: Color) {
 }
 
 @Composable
-private fun StatisticsRow(summary: DashboardSummary) {
+private fun StatisticsRow(summary: DashboardSummary, onDaysClick: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         StatCard("Total expense", formatMoney(summary.monthExpenseMinor), Icons.Filled.AccountBalanceWallet, Modifier.weight(1f))
-        StatCard("Total days", "${summary.countedDays} Days", Icons.Filled.CalendarMonth, Modifier.weight(1f))
+        StatCard("Total days", "${summary.countedDays} Days", Icons.Filled.CalendarMonth, Modifier.weight(1f), onDaysClick)
         StatCard("Daily average", formatMoney(summary.dailyAverageMinor), Icons.Filled.ArrowUpward, Modifier.weight(1f))
     }
 }
@@ -177,9 +186,9 @@ private fun formatMoney(amountMinor: Long): String {
 }
 
 @Composable
-private fun StatCard(title: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
+private fun StatCard(title: String, value: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     Card(
-        modifier, RoundedCornerShape(20.dp),
+        modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(Modifier.padding(14.dp)) {

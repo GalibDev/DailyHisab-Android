@@ -15,5 +15,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val summary = repository.observeTransactions()
         .map(::calculateDashboardSummary)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardSummary())
+    val transactions = repository.observeTransactions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val categories = repository.observeCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
-
