@@ -6,6 +6,7 @@ import com.dailyhisab.android.data.local.entity.BudgetEntity
 import com.dailyhisab.android.data.local.entity.CategoryEntity
 import com.dailyhisab.android.data.local.entity.LoanEntity
 import com.dailyhisab.android.data.local.entity.TransactionEntity
+import com.dailyhisab.android.data.local.entity.SavingsGoalEntity
 import com.dailyhisab.android.domain.model.DefaultCategories
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -29,8 +30,9 @@ data class FinanceSnapshot(
     val budgets: List<BudgetEntity>,
     val loans: List<LoanEntity>,
     val updatedAt: Long,
+    val savingsGoals: List<SavingsGoalEntity> = emptyList(),
 ) {
-    val hasData get() = categories.isNotEmpty() || transactions.isNotEmpty() || budgets.isNotEmpty() || loans.isNotEmpty()
+    val hasData get() = categories.isNotEmpty() || transactions.isNotEmpty() || budgets.isNotEmpty() || loans.isNotEmpty() || savingsGoals.isNotEmpty()
 }
 
 /** Shares the exact Realtime Database user paths used by dailyhisab.xyz. */
@@ -44,6 +46,7 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
         budgets = dao.observeBudgets().first(),
         loans = dao.observeLoans().first(),
         updatedAt = updatedAt,
+        savingsGoals = dao.observeSavingsGoals().first(),
     )
 
     suspend fun readRemote(uid: String): FinanceSnapshot? {
@@ -81,6 +84,7 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
             "loans/updatedAt" to now,
             "nativeAndroid/categories" to snapshot.categories.map { it.toNativeCategory() },
             "nativeAndroid/budgets" to snapshot.budgets.map { it.toNativeBudget() },
+            "nativeAndroid/savingsGoals" to snapshot.savingsGoals.map { it.toNativeSavingsGoal() },
             "nativeAndroid/updatedAt" to now,
         )
         // Preserve website-only reminders, recurring expenses and wallet data.
@@ -92,10 +96,12 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
         dao.clearCategories()
         dao.clearBudgets()
         dao.clearLoans()
+        dao.clearSavingsGoals()
         if (snapshot.categories.isNotEmpty()) dao.insertCategories(snapshot.categories)
         if (snapshot.transactions.isNotEmpty()) dao.insertTransactions(snapshot.transactions)
         if (snapshot.budgets.isNotEmpty()) dao.insertBudgets(snapshot.budgets)
         if (snapshot.loans.isNotEmpty()) dao.insertLoans(snapshot.loans)
+        if (snapshot.savingsGoals.isNotEmpty()) dao.insertSavingsGoals(snapshot.savingsGoals)
     }
 
     suspend fun clearLocal() = database.withTransaction {
@@ -103,6 +109,7 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
         dao.clearCategories()
         dao.clearBudgets()
         dao.clearLoans()
+        dao.clearSavingsGoals()
         dao.insertCategories(DefaultCategories.map { CategoryEntity(name = it.name, iconKey = it.iconKey, colorArgb = it.colorArgb, position = it.position, isDefault = it.isDefault) })
     }
 
@@ -149,6 +156,7 @@ internal fun mergeGuestWithRemote(local: FinanceSnapshot, remote: FinanceSnapsho
         budgets = mergeBudgets(local.budgets, remote.budgets),
         loans = mergeLoans(local.loans, remote.loans),
         updatedAt = maxOf(local.updatedAt, remote.updatedAt, System.currentTimeMillis()),
+        savingsGoals = mergeSavingsGoals(local.savingsGoals, remote.savingsGoals),
     )
 }
 
@@ -214,12 +222,24 @@ private fun snapshotFromRealtime(appData: DataSnapshot): FinanceSnapshot {
             updatedAtEpochMillis = loansNode.child("updatedAt").getValue(Long::class.java) ?: 0L,
         )
     }
+    val savingsGoals = native.child("savingsGoals").records().mapNotNull { row ->
+        val title = row.string("title").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        SavingsGoalEntity(
+            id = row.long("id"),
+            title = title,
+            targetMinor = row.long("targetMinor"),
+            savedMinor = row.long("savedMinor"),
+            deadlineEpochDay = row.long("deadlineEpochDay"),
+            updatedAtEpochMillis = row.long("updatedAtEpochMillis"),
+        )
+    }
     return FinanceSnapshot(
         categories,
         transactions,
         budgets,
         loans,
         maxOf(finance.longValue("updatedAt"), loansNode.longValue("updatedAt"), native.longValue("updatedAt")),
+        savingsGoals,
     )
 }
 
@@ -251,6 +271,7 @@ private fun LoanEntity.toWebLoan(): Map<String, Any> {
 
 private fun CategoryEntity.toNativeCategory() = mapOf("id" to id, "name" to name, "iconKey" to iconKey, "colorArgb" to colorArgb, "position" to position, "isDefault" to isDefault)
 private fun BudgetEntity.toNativeBudget() = mapOf("id" to id, "name" to name, "amountMinor" to amountMinor, "period" to period, "startEpochDay" to startEpochDay, "endEpochDay" to endEpochDay, "updatedAtEpochMillis" to updatedAtEpochMillis)
+private fun SavingsGoalEntity.toNativeSavingsGoal() = mapOf("id" to id, "title" to title, "targetMinor" to targetMinor, "savedMinor" to savedMinor, "deadlineEpochDay" to deadlineEpochDay, "updatedAtEpochMillis" to updatedAtEpochMillis)
 private fun TransactionEntity.uniqueKey() = listOf(amountMinor, type, categoryId, dateEpochDay, description.trim(), paymentMethod, createdAtEpochMillis).joinToString("|")
 private fun Long.toMajorUnits() = BigDecimal.valueOf(this, 2).toDouble()
 private fun Double.toMinorUnits() = BigDecimal.valueOf(this).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact()
@@ -293,6 +314,17 @@ private fun mergeLoans(local: List<LoanEntity>, remote: List<LoanEntity>): List<
     var nextId = (result.maxOfOrNull { it.id } ?: 0L) + 1
     remote.forEach { incoming ->
         val index = result.indexOfFirst { it.personName.equals(incoming.personName, true) && it.direction == incoming.direction && it.dueEpochDay == incoming.dueEpochDay }
+        if (index < 0) result += incoming.copy(id = nextId++)
+        else if (incoming.updatedAtEpochMillis > result[index].updatedAtEpochMillis) result[index] = incoming.copy(id = result[index].id)
+    }
+    return result
+}
+
+private fun mergeSavingsGoals(local: List<SavingsGoalEntity>, remote: List<SavingsGoalEntity>): List<SavingsGoalEntity> {
+    val result = local.toMutableList()
+    var nextId = (result.maxOfOrNull { it.id } ?: 0L) + 1
+    remote.forEach { incoming ->
+        val index = result.indexOfFirst { it.title.equals(incoming.title, true) && it.deadlineEpochDay == incoming.deadlineEpochDay }
         if (index < 0) result += incoming.copy(id = nextId++)
         else if (incoming.updatedAtEpochMillis > result[index].updatedAtEpochMillis) result[index] = incoming.copy(id = result[index].id)
     }

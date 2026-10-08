@@ -28,12 +28,16 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
+import com.dailyhisab.android.ui.LocalAppDisplay
+import com.dailyhisab.android.ui.appMoney
+import com.dailyhisab.android.ui.appText
 
 private enum class ReportPeriod { Daily, Weekly, Monthly, Yearly, Custom }
 
 @Composable
 fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = viewModel()) {
     val context = LocalContext.current
+    val currency = LocalAppDisplay.current.currency
     val transactions by viewModel.transactions.collectAsState()
     val categories by viewModel.categories.collectAsState()
     var showMonthlyCard by remember { mutableStateOf(false) }
@@ -62,7 +66,7 @@ fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = vie
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { Text("Reports & analytics", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        item { Text(appText("রিপোর্ট ও বিশ্লেষণ", "Reports & analytics"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
         item {
             Button(
                 onClick = { showMonthlyCard = true },
@@ -99,7 +103,7 @@ fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = vie
         item {
             DailyHisabCard {
                 Text("${period.name} ${type.name} Report", fontWeight = FontWeight.Bold)
-                Text(money(total), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(appMoney(total, currency), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("${rows.size} transaction rows • ${range.first} to ${range.second}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!analytics) {
                     Spacer(Modifier.height(12.dp))
@@ -130,6 +134,7 @@ private fun DateButton(label: String, date: LocalDate, modifier: Modifier, updat
 
 @Composable
 private fun AnalyticsCard(rows: List<FinanceTransaction>, categories: List<Category>) {
+    val currency = LocalAppDisplay.current.currency
     val totals = rows.groupBy { it.categoryId }.mapValues { (_, values) -> values.sumOf { it.amountMinor } }.toList().sortedByDescending { it.second }.take(6)
     val maximum = totals.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
     DailyHisabCard {
@@ -139,7 +144,7 @@ private fun AnalyticsCard(rows: List<FinanceTransaction>, categories: List<Categ
             val color = listOf(Color(0xFF1641A3), Color(0xFFFF7518), Color(0xFF00A56B), Color(0xFF8B5CF6), Color(0xFFE83E8C), Color(0xFF0891B2))[index]
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(categories.firstOrNull { it.id == categoryId }?.name ?: "Unknown", Modifier.weight(1f))
-                Text(money(amount), fontWeight = FontWeight.SemiBold)
+                Text(appMoney(amount, currency), fontWeight = FontWeight.SemiBold)
             }
             Canvas(Modifier.fillMaxWidth().height(10.dp).padding(top = 3.dp)) {
                 drawRoundRect(Color.LightGray.copy(alpha = .3f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f))
@@ -151,6 +156,7 @@ private fun AnalyticsCard(rows: List<FinanceTransaction>, categories: List<Categ
 
 @Composable
 private fun ReportRow(row: FinanceTransaction, categories: List<Category>) {
+    val currency = LocalAppDisplay.current.currency
     DailyHisabCard(contentPadding = PaddingValues(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -158,9 +164,7 @@ private fun ReportRow(row: FinanceTransaction, categories: List<Category>) {
                 Text("${row.date} • ${row.paymentMethod}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (row.description.isNotBlank()) Text(row.description)
             }
-            Text(money(row.amountMinor), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(appMoney(row.amountMinor, currency), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
-
-private fun money(minor: Long) = "৳ " + BigDecimal.valueOf(minor, 2).stripTrailingZeros().toPlainString()

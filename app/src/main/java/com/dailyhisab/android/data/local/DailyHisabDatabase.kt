@@ -9,12 +9,13 @@ import com.dailyhisab.android.data.local.entity.CategoryEntity
 import com.dailyhisab.android.data.local.entity.TransactionEntity
 import com.dailyhisab.android.data.local.entity.BudgetEntity
 import com.dailyhisab.android.data.local.entity.LoanEntity
+import com.dailyhisab.android.data.local.entity.SavingsGoalEntity
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TransactionEntity::class, CategoryEntity::class, BudgetEntity::class, LoanEntity::class],
-    version = 3,
+    entities = [TransactionEntity::class, CategoryEntity::class, BudgetEntity::class, LoanEntity::class, SavingsGoalEntity::class],
+    version = 4,
     exportSchema = true,
 )
 abstract class DailyHisabDatabase : RoomDatabase() {
@@ -28,7 +29,7 @@ abstract class DailyHisabDatabase : RoomDatabase() {
                 context.applicationContext,
                 DailyHisabDatabase::class.java,
                 "daily-hisab.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
         }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -43,6 +44,14 @@ abstract class DailyHisabDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "CREATE TABLE IF NOT EXISTS `loans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `personName` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, `repaidMinor` INTEGER NOT NULL, `direction` TEXT NOT NULL, `dueEpochDay` INTEGER NOT NULL, `note` TEXT NOT NULL, `reminderEnabled` INTEGER NOT NULL, `updatedAtEpochMillis` INTEGER NOT NULL)",
+                )
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `savings_goals` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `targetMinor` INTEGER NOT NULL, `savedMinor` INTEGER NOT NULL, `deadlineEpochDay` INTEGER NOT NULL, `updatedAtEpochMillis` INTEGER NOT NULL)",
                 )
             }
         }

@@ -30,6 +30,9 @@ import com.dailyhisab.android.core.designsystem.DailyHisabCard
 import com.dailyhisab.android.core.designsystem.DailyHisabSectionTitle
 import com.dailyhisab.android.ui.theme.DailyBlue
 import com.dailyhisab.android.ui.theme.DailyOrange
+import com.dailyhisab.android.ui.LocalAppDisplay
+import com.dailyhisab.android.ui.appMoney
+import com.dailyhisab.android.ui.appText
 
 @Composable
 fun HomeScreen(
@@ -79,7 +82,7 @@ private fun HomeHeader(onMenuClick: () -> Unit) {
                 Text("Daily ", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                 Text("Hisab", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = DailyOrange)
             }
-            Text("Your daily expense tracker", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(appText("আপনার দৈনিক খরচের হিসাব", "Your daily expense tracker"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = {}) { Icon(Icons.Filled.NotificationsNone, "Notifications") }
     }
@@ -87,6 +90,7 @@ private fun HomeHeader(onMenuClick: () -> Unit) {
 
 @Composable
 private fun OverviewCard(summary: DashboardSummary) {
+    val currency = LocalAppDisplay.current.currency
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -100,7 +104,7 @@ private fun OverviewCard(summary: DashboardSummary) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = Color.White.copy(alpha = 0.15f), shape = CircleShape) {
                     Text(
-                        text = "TODAY'S OVERVIEW",
+                        text = appText("আজকের সারসংক্ষেপ", "TODAY'S OVERVIEW"),
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         color = Color.White,
                         fontSize = 12.sp,
@@ -112,12 +116,12 @@ private fun OverviewCard(summary: DashboardSummary) {
                 Icon(Icons.AutoMirrored.Filled.TrendingUp, null, Modifier.size(30.dp), Color.White)
             }
             Spacer(Modifier.height(28.dp))
-            Text("Today's expense", color = Color.White.copy(alpha = 0.75f), fontWeight = FontWeight.SemiBold)
-            Text(formatMoney(summary.todayExpenseMinor), color = Color.White, fontSize = 42.sp, fontWeight = FontWeight.Bold)
+            Text(appText("আজকের খরচ", "Today's expense"), color = Color.White.copy(alpha = 0.75f), fontWeight = FontWeight.SemiBold)
+            Text(appMoney(summary.todayExpenseMinor, currency), color = Color.White, fontSize = 42.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(22.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OverviewMetric("THIS MONTH", formatMoney(summary.monthExpenseMinor), Modifier.weight(1f))
-                OverviewMetric("ALL EXPENSE", formatMoney(summary.allExpenseMinor), Modifier.weight(1f))
+                OverviewMetric(appText("এই মাস", "THIS MONTH"), appMoney(summary.monthExpenseMinor, currency), Modifier.weight(1f))
+                OverviewMetric(appText("সব খরচ", "ALL EXPENSE"), appMoney(summary.allExpenseMinor, currency), Modifier.weight(1f))
             }
         }
     }
@@ -139,20 +143,20 @@ private fun QuickAddCard() {
     ) {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Quick add", Modifier.weight(1f), fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(appText("দ্রুত যোগ করুন", "Quick add"), Modifier.weight(1f), fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Surface(color = DailyBlue.copy(alpha = 0.08f), shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Add, null, Modifier.size(18.dp), DailyBlue)
-                        Text("Expense", color = DailyBlue, fontWeight = FontWeight.Bold)
+                        Text(appText("খরচ", "Expense"), color = DailyBlue, fontWeight = FontWeight.Bold)
                     }
                 }
             }
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                QuickAction("Breakfast", Icons.Filled.Restaurant, Color(0xFFFF9D00))
-                QuickAction("Transport", Icons.Filled.TwoWheeler, Color(0xFF0875D1))
-                QuickAction("Income", Icons.Filled.Payments, Color(0xFF00A46C))
-                QuickAction("More", Icons.Filled.Add, Color(0xFF7549E8))
+                QuickAction(appText("সকালের নাস্তা", "Breakfast"), Icons.Filled.Restaurant, Color(0xFFFF9D00))
+                QuickAction(appText("যাতায়াত", "Transport"), Icons.Filled.TwoWheeler, Color(0xFF0875D1))
+                QuickAction(appText("আয়", "Income"), Icons.Filled.Payments, Color(0xFF00A46C))
+                QuickAction(appText("আরও", "More"), Icons.Filled.Add, Color(0xFF7549E8))
             }
         }
     }
@@ -172,17 +176,12 @@ private fun QuickAction(label: String, icon: ImageVector, color: Color) {
 
 @Composable
 private fun StatisticsRow(summary: DashboardSummary, onDaysClick: () -> Unit) {
+    val currency = LocalAppDisplay.current.currency
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatCard("Total expense", formatMoney(summary.monthExpenseMinor), Icons.Filled.AccountBalanceWallet, Modifier.weight(1f))
-        StatCard("Total days", "${summary.countedDays} Days", Icons.Filled.CalendarMonth, Modifier.weight(1f), onDaysClick)
-        StatCard("Daily average", formatMoney(summary.dailyAverageMinor), Icons.Filled.ArrowUpward, Modifier.weight(1f))
+        StatCard(appText("মোট খরচ", "Total expense"), appMoney(summary.monthExpenseMinor, currency), Icons.Filled.AccountBalanceWallet, Modifier.weight(1f))
+        StatCard(appText("মোট দিন", "Total days"), "${summary.countedDays} ${appText("দিন", "Days")}", Icons.Filled.CalendarMonth, Modifier.weight(1f), onDaysClick)
+        StatCard(appText("দৈনিক গড়", "Daily average"), appMoney(summary.dailyAverageMinor, currency), Icons.Filled.ArrowUpward, Modifier.weight(1f))
     }
-}
-
-private fun formatMoney(amountMinor: Long): String {
-    val whole = amountMinor / 100
-    val fraction = amountMinor % 100
-    return if (fraction == 0L) "৳ $whole" else "৳ $whole.${fraction.toString().padStart(2, '0')}"
 }
 
 @Composable

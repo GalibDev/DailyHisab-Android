@@ -24,7 +24,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         when (inputData.getString(KEY_TYPE)) {
             TYPE_DAILY -> dailyReminder()
             TYPE_LOAN -> loanReminders()
-            TYPE_BUDGET -> budgetWarnings()
+            TYPE_BUDGET -> { budgetWarnings(); savingsGoalAlerts() }
         }
         Result.success()
     }.getOrElse { Result.retry() }
@@ -62,6 +62,16 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
             val percent = (spent * 100 / budget.amountMinor).toInt()
             if (percent >= settings.budgetThreshold) {
                 notify((3000L + budget.id).toInt(), "${budget.name} budget warning", "$percent% ব্যবহার হয়েছে • ${money(spent)} / ${money(budget.amountMinor)}")
+            }
+        }
+    }
+
+    private suspend fun savingsGoalAlerts() {
+        val today = LocalDate.now().toEpochDay()
+        dao.savingsGoals().forEach { goal ->
+            when {
+                goal.savedMinor >= goal.targetMinor -> notify((4000L + goal.id).toInt(), "Savings goal completed", "${goal.title} লক্ষ্য পূরণ হয়েছে!")
+                goal.deadlineEpochDay <= today -> notify((4000L + goal.id).toInt(), "Savings goal deadline", "${goal.title}–এর deadline এসে গেছে।")
             }
         }
     }

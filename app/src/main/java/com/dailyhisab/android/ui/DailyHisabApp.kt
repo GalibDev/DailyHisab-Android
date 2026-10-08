@@ -26,6 +26,7 @@ import com.dailyhisab.android.feature.profile.ProfileScreen
 import com.dailyhisab.android.feature.sync.CloudSyncViewModel
 import com.dailyhisab.android.feature.auth.AuthViewModel
 import com.dailyhisab.android.feature.home.HomeViewModel
+import com.dailyhisab.android.feature.savings.SavingsGoalScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
@@ -58,6 +59,7 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
             DrawerRoute.Reports -> { destination = PrimaryDestination.Reports; reportsSection = 0 }
             DrawerRoute.Categories -> destination = PrimaryDestination.Add
             DrawerRoute.Budgets -> { destination = PrimaryDestination.Reports; reportsSection = 1 }
+            DrawerRoute.Savings -> destination = PrimaryDestination.Home
             DrawerRoute.Loans -> { destination = PrimaryDestination.Reports; reportsSection = 2 }
             DrawerRoute.Calendar -> destination = PrimaryDestination.Calendar
             DrawerRoute.Backup, DrawerRoute.Profile -> destination = PrimaryDestination.Profile
@@ -88,6 +90,13 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
                     tonalElevation = 8.dp,
                 ) {
                     PrimaryDestination.entries.forEach { item ->
+                        val shownLabel = when (item) {
+                            PrimaryDestination.Home -> appText("হোম", "Home")
+                            PrimaryDestination.Reports -> appText("রিপোর্ট", "Reports")
+                            PrimaryDestination.Add -> appText("যোগ করুন", "Add")
+                            PrimaryDestination.Calendar -> appText("ক্যালেন্ডার", "Calendar")
+                            PrimaryDestination.Profile -> appText("প্রোফাইল", "Profile")
+                        }
                         NavigationBarItem(
                             selected = destination == item,
                             onClick = {
@@ -108,15 +117,17 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
                                         containerColor = MaterialTheme.colorScheme.primary,
                                         contentColor = MaterialTheme.colorScheme.onPrimary,
                                     ) { Icon(item.icon, contentDescription = item.label) }
-                                } else Icon(item.icon, contentDescription = item.label)
+                                } else Icon(item.icon, contentDescription = shownLabel)
                             },
-                            label = { Text(item.label) },
+                            label = { Text(shownLabel) },
                         )
                     }
                 }
             },
         ) { contentPadding ->
-            when (destination) {
+            if (drawerRoute == DrawerRoute.Savings) {
+                SavingsGoalScreen(contentPadding = contentPadding, currency = profile.currency, back = { navigate(DrawerRoute.Dashboard) })
+            } else when (destination) {
                 PrimaryDestination.Home -> HomeScreen(
                     contentPadding = contentPadding,
                     viewModel = homeViewModel,

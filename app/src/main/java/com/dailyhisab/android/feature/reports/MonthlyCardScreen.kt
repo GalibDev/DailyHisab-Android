@@ -35,6 +35,8 @@ import java.io.File
 import java.math.BigDecimal
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import com.dailyhisab.android.ui.LocalAppDisplay
+import com.dailyhisab.android.ui.appMoney
 
 @Composable
 fun MonthlyCardScreen(
@@ -42,6 +44,7 @@ fun MonthlyCardScreen(
     back: () -> Unit,
 ) {
     val context = LocalContext.current
+    val currency = LocalAppDisplay.current.currency
     var month by remember { mutableStateOf(YearMonth.now()) }
     var hideAmounts by remember { mutableStateOf(true) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
@@ -50,7 +53,7 @@ fun MonthlyCardScreen(
     val expense = monthRows.filter { it.type == TransactionType.Expense }.sumOf { it.amountMinor }
     val download = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
         if (uri != null) {
-            MonthlyCardExporter.write(context, uri, month, income, expense, hideAmounts)
+            MonthlyCardExporter.write(context, uri, month, income, expense, hideAmounts, currency)
             savedMessage = "PNG downloaded"
         }
     }
@@ -76,14 +79,14 @@ fun MonthlyCardScreen(
             Text("টাকার পরিমাণ লুকিয়ে রাখুন", style = MaterialTheme.typography.titleMedium)
         }
         Text("নিচের ছবিটিই শেয়ার হবে। নাম, নোট বা লেনদেনের বিস্তারিত থাকবে না।", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        MonthlyCardPreview(month, income, expense, hideAmounts)
+        MonthlyCardPreview(month, income, expense, hideAmounts, currency)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = { download.launch("daily-hisab-${month}.png") },
                 modifier = Modifier.weight(1f),
             ) { Icon(Icons.Filled.Download, null); Spacer(Modifier.width(6.dp)); Text("PNG ডাউনলোড") }
             Button(
-                onClick = { MonthlyCardExporter.share(context, month, income, expense, hideAmounts) },
+                onClick = { MonthlyCardExporter.share(context, month, income, expense, hideAmounts, currency) },
                 modifier = Modifier.weight(1f),
             ) { Icon(Icons.Filled.Share, null); Spacer(Modifier.width(6.dp)); Text("শেয়ার") }
         }
@@ -92,10 +95,10 @@ fun MonthlyCardScreen(
 }
 
 @Composable
-private fun MonthlyCardPreview(month: YearMonth, income: Long, expense: Long, hidden: Boolean) {
-    val shownIncome = if (hidden) "••••" else money(income)
-    val shownExpense = if (hidden) "••••" else money(expense)
-    val shownBalance = if (hidden) "••••" else money(income - expense)
+private fun MonthlyCardPreview(month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String) {
+    val shownIncome = if (hidden) "••••" else appMoney(income, currency)
+    val shownExpense = if (hidden) "••••" else appMoney(expense, currency)
+    val shownBalance = if (hidden) "••••" else appMoney(income - expense, currency)
     Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)) {
         Column(
             Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF082A85), androidx.compose.ui.graphics.Color(0xFF1455C8)))).padding(24.dp),
@@ -123,14 +126,14 @@ private fun Metric(label: String, value: String) {
 }
 
 private object MonthlyCardExporter {
-    fun write(context: Context, uri: Uri, month: YearMonth, income: Long, expense: Long, hidden: Boolean) {
-        context.contentResolver.openOutputStream(uri)?.use { stream -> render(month, income, expense, hidden).compress(Bitmap.CompressFormat.PNG, 100, stream) }
+    fun write(context: Context, uri: Uri, month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String) {
+        context.contentResolver.openOutputStream(uri)?.use { stream -> render(month, income, expense, hidden, currency).compress(Bitmap.CompressFormat.PNG, 100, stream) }
     }
 
-    fun share(context: Context, month: YearMonth, income: Long, expense: Long, hidden: Boolean) {
+    fun share(context: Context, month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String) {
         val directory = File(context.cacheDir, "exports").apply { mkdirs() }
         val file = File(directory, "daily-hisab-${month}.png")
-        file.outputStream().use { render(month, income, expense, hidden).compress(Bitmap.CompressFormat.PNG, 100, it) }
+        file.outputStream().use { render(month, income, expense, hidden, currency).compress(Bitmap.CompressFormat.PNG, 100, it) }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
@@ -139,7 +142,7 @@ private object MonthlyCardExporter {
         }, "Share monthly card"))
     }
 
-    private fun render(month: YearMonth, income: Long, expense: Long, hidden: Boolean): Bitmap {
+    private fun render(month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String): Bitmap {
         val bitmap = Bitmap.createBitmap(1080, 1350, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.rgb(12, 49, 139))
@@ -155,7 +158,7 @@ private object MonthlyCardExporter {
             val top = 350f + index * 210f
             Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(35, 255, 255, 255) }.also { canvas.drawRoundRect(75f, top, 1005f, top + 170f, 28f, 28f, it) }
             canvas.drawText(name, 110f, top + 58f, label)
-            canvas.drawText(if (hidden) "••••" else money(value), 110f, top + 128f, amount)
+            canvas.drawText(if (hidden) "••••" else appMoney(value, currency), 110f, top + 128f, amount)
         }
         canvas.drawText("নিজের হিসাব, নিজের নিয়ন্ত্রণে।", 90f, 1080f, amount)
         canvas.drawText(if (hidden) "ব্যক্তিগত পরিমাণ লুকানো আছে" else "মাসিক আয়-ব্যয়ের সারাংশ", 90f, 1140f, label)
@@ -163,5 +166,3 @@ private object MonthlyCardExporter {
         return bitmap
     }
 }
-
-private fun money(minor: Long) = "৳ " + BigDecimal.valueOf(minor, 2).stripTrailingZeros().toPlainString()

@@ -24,6 +24,8 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import com.dailyhisab.android.ui.LocalAppDisplay
+import com.dailyhisab.android.ui.appMoney
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +36,7 @@ fun DayDetailsSheet(
     addExpense: () -> Unit,
 ) {
     var fullScreen by remember { mutableStateOf(false) }
+    val currency = LocalAppDisplay.current.currency
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     val today = LocalDate.now()
     val month = YearMonth.from(today)
@@ -63,7 +66,7 @@ fun DayDetailsSheet(
                 ListItem(
                     headlineContent = { Text(categories.firstOrNull { it.id == row.categoryId }?.name ?: "Unknown", fontWeight = FontWeight.SemiBold) },
                     supportingContent = { Text(row.description.ifBlank { row.paymentMethod }) },
-                    trailingContent = { Text(money(row.amountMinor), fontWeight = FontWeight.Bold) },
+                    trailingContent = { Text(appMoney(row.amountMinor, currency), fontWeight = FontWeight.Bold) },
                 )
             }
         } else {
@@ -74,7 +77,7 @@ fun DayDetailsSheet(
                     modifier = Modifier.fillMaxWidth(),
                     headlineContent = { Text(date.format(DateTimeFormatter.ofPattern("dd MMM yyyy")), fontWeight = FontWeight.SemiBold) },
                     supportingContent = { Text(if (amount == 0L) "কোনো খরচ হয়নি" else "বিস্তারিত দেখতে চাপুন") },
-                    trailingContent = { Text(money(amount), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                    trailingContent = { Text(appMoney(amount, currency), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                 )
                 TextButton(onClick = { selectedDate = date }, modifier = Modifier.align(Alignment.End)) { Text("বিস্তারিত") }
@@ -102,5 +105,3 @@ fun DayDetailsSheet(
         }
     }
 }
-
-private fun money(minor: Long) = "৳ " + BigDecimal.valueOf(minor, 2).stripTrailingZeros().toPlainString()

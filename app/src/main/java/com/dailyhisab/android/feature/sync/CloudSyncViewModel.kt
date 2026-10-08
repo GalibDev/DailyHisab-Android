@@ -97,7 +97,7 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
                 val local = repository.readLocal(preferences.localModified)
                 val remote = repository.readRemote(uid)
                 val firstMigration = !preferences.wasMigrated(uid)
-                val localHasUserData = local.transactions.isNotEmpty() || local.budgets.isNotEmpty() || local.loans.isNotEmpty()
+                val localHasUserData = local.transactions.isNotEmpty() || local.budgets.isNotEmpty() || local.loans.isNotEmpty() || local.savingsGoals.isNotEmpty()
                 val resolved: FinanceSnapshot = when {
                     remote == null -> local.copy(updatedAt = System.currentTimeMillis())
                     firstMigration && localHasUserData -> mergeGuestWithRemote(local, remote)

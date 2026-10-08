@@ -13,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.dailyhisab.android.notifications.ReminderScheduler
+import com.dailyhisab.android.ui.AppDisplayProvider
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,7 +32,9 @@ class MainActivity : ComponentActivity() {
                 darkTheme = dark,
                 style = if (profile.themeStyle == "Default") AppThemeStyle.Default else AppThemeStyle.Aurora,
             ) {
-                DailyHisabApp(profile, preferences)
+                AppDisplayProvider(profile.language, profile.currency) {
+                    DailyHisabApp(profile, preferences)
+                }
             }
         }
     }
