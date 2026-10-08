@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,6 +39,7 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
     )
     val state: StateFlow<SyncUiState> = mutableState.asStateFlow()
     private var currentUid: String? = null
+    private var remoteObserver: Job? = null
     private val authListener = FirebaseAuth.AuthStateListener { firebase ->
         viewModelScope.launch { switchUser(firebase.currentUser?.uid) }
     }
@@ -79,6 +81,8 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
             if (uid == currentUid) return@withLock
             val previousOwner = preferences.activeUid
             currentUid = uid
+            remoteObserver?.cancel()
+            remoteObserver = null
             if (uid == null) {
                 if (previousOwner != null) repository.clearLocal()
                 preferences.activeUid = null
@@ -91,18 +95,46 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
                 val local = repository.readLocal(preferences.localModified)
                 val remote = repository.readRemote(uid)
                 val firstMigration = !preferences.wasMigrated(uid)
+                val localHasUserData = local.transactions.isNotEmpty() || local.budgets.isNotEmpty() || local.loans.isNotEmpty()
                 val resolved: FinanceSnapshot = when {
                     remote == null -> local.copy(updatedAt = System.currentTimeMillis())
-                    firstMigration && local.hasData -> mergeGuestWithRemote(local, remote)
-                    remote.updatedAt > preferences.localModified -> remote
-                    else -> local.copy(updatedAt = System.currentTimeMillis())
+                    firstMigration && localHasUserData -> mergeGuestWithRemote(local, remote)
+                    !localHasUserData || remote.updatedAt >= preferences.localModified -> remote
+                    else -> mergeGuestWithRemote(local, remote)
                 }
                 if (resolved !== local) repository.replaceLocal(resolved)
-                repository.upload(uid, resolved.copy(updatedAt = System.currentTimeMillis()))
+                val needsUpload = remote == null || (firstMigration && localHasUserData) ||
+                    (localHasUserData && preferences.localModified > remote.updatedAt)
+                if (needsUpload) {
+                    val outgoing = resolved.copy(updatedAt = System.currentTimeMillis())
+                    repository.upload(uid, outgoing)
+                    preferences.lastRemoteApplied = outgoing.updatedAt
+                } else {
+                    preferences.lastRemoteApplied = remote.updatedAt
+                }
                 preferences.activeUid = uid
                 preferences.markMigrated(uid)
                 recordSuccess(if (firstMigration) "Local data migrated and synced" else "Cloud data synchronized")
+                observeRemote(uid)
             }.onFailure(::recordFailure)
+        }
+    }
+
+    private fun observeRemote(uid: String) {
+        remoteObserver?.cancel()
+        remoteObserver = viewModelScope.launch {
+            repository.observeRemote(uid).collect { remote ->
+                if (remote == null || uid != currentUid || remote.updatedAt <= preferences.lastRemoteApplied) return@collect
+                mutex.withLock {
+                    if (uid != currentUid || remote.updatedAt <= preferences.lastRemoteApplied) return@withLock
+                    runCatching {
+                        mutableState.value = mutableState.value.copy(phase = SyncPhase.Syncing, message = "Receiving website changes…")
+                        repository.replaceLocal(remote)
+                        preferences.lastRemoteApplied = remote.updatedAt
+                        recordSuccess("Website changes synchronized")
+                    }.onFailure(::recordFailure)
+                }
+            }
         }
     }
 
@@ -111,6 +143,7 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
             mutableState.value = mutableState.value.copy(phase = SyncPhase.Syncing, message = "Backing up…")
             val snapshot = repository.readLocal(System.currentTimeMillis())
             repository.upload(uid, snapshot)
+            preferences.lastRemoteApplied = snapshot.updatedAt
             recordSuccess(successMessage)
         }.onFailure(::recordFailure)
     }
@@ -118,7 +151,6 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
     private fun recordSuccess(message: String) {
         val now = System.currentTimeMillis()
         preferences.lastSync = now
-        preferences.localModified = now
         mutableState.value = SyncUiState(SyncPhase.Synced, now, message)
     }
 
@@ -133,6 +165,7 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onCleared() {
         auth.removeAuthStateListener(authListener)
+        remoteObserver?.cancel()
         super.onCleared()
     }
 }
@@ -148,6 +181,9 @@ private class SyncPreferences(context: Context) {
     var localModified: Long
         get() = values.getLong("localModified", 0)
         set(value) { values.edit().putLong("localModified", value).apply() }
+    var lastRemoteApplied: Long
+        get() = values.getLong("lastRemoteApplied", 0)
+        set(value) { values.edit().putLong("lastRemoteApplied", value).apply() }
     fun wasMigrated(uid: String) = values.getStringSet("migrated", emptySet()).orEmpty().contains(uid)
     fun markMigrated(uid: String) {
         val migrated = values.getStringSet("migrated", emptySet()).orEmpty().toMutableSet().apply { add(uid) }

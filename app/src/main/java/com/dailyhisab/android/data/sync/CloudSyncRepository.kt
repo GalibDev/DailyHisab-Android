@@ -8,7 +8,12 @@ import com.dailyhisab.android.data.local.entity.LoanEntity
 import com.dailyhisab.android.data.local.entity.TransactionEntity
 import com.dailyhisab.android.domain.model.DefaultCategories
 import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import java.math.BigDecimal
@@ -45,6 +50,21 @@ class CloudSyncRepository(private val database: DailyHisabDatabase) {
         val appData = realtime.child("users").child(uid).child("appData").get().await()
         if (!appData.exists()) return null
         return snapshotFromRealtime(appData)
+    }
+
+    fun observeRemote(uid: String): Flow<FinanceSnapshot?> = callbackFlow {
+        val reference = realtime.child("users").child(uid).child("appData")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(if (snapshot.exists()) snapshotFromRealtime(snapshot) else null)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
+        }
+        reference.addValueEventListener(listener)
+        awaitClose { reference.removeEventListener(listener) }
     }
 
     suspend fun upload(uid: String, snapshot: FinanceSnapshot) {
@@ -235,7 +255,7 @@ private fun DataSnapshot.values(): List<Any?> = when (val stored = value) {
     else -> children.map { it.value }.toList()
 }
 private fun DataSnapshot.records(): List<Map<*, *>> = values().mapNotNull { it as? Map<*, *> }
-private fun DataSnapshot.longValue(key: String) = child(key).getValue(Long::class.java) ?: 0L
+private fun DataSnapshot.longValue(key: String) = (child(key).value as? Number)?.toLong() ?: 0L
 private fun Map<*, *>.records(key: String): List<Map<*, *>> = when (val stored = this[key]) {
     is List<*> -> stored.mapNotNull { it as? Map<*, *> }
     is Map<*, *> -> stored.values.mapNotNull { it as? Map<*, *> }
