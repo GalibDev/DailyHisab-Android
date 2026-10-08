@@ -36,6 +36,7 @@ fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = vie
     val context = LocalContext.current
     val transactions by viewModel.transactions.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    var showMonthlyCard by remember { mutableStateOf(false) }
     var analytics by remember { mutableStateOf(false) }
     var type by remember { mutableStateOf(TransactionType.Expense) }
     var period by remember { mutableStateOf(ReportPeriod.Monthly) }
@@ -51,7 +52,10 @@ fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = vie
     }
     val rows = transactions.filter { it.type == type && it.date in range.first..range.second }
     val total = rows.sumOf { it.amountMinor }
-    val monthlyRows = transactions.filter { YearMonth.from(it.date) == YearMonth.from(today) }
+    if (showMonthlyCard) {
+        MonthlyCardScreen(transactions = transactions, back = { showMonthlyCard = false })
+        return
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(contentPadding),
@@ -61,7 +65,7 @@ fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = vie
         item { Text("Reports & analytics", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
         item {
             Button(
-                onClick = { ReportExporter.shareMonthlyCard(context, monthlyRows, categories) },
+                onClick = { showMonthlyCard = true },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
             ) { Icon(Icons.Filled.Share, null); Spacer(Modifier.width(8.dp)); Text("মাসিক হিসাব card share করুন") }
