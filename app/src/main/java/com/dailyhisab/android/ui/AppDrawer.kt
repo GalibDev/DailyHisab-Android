@@ -20,6 +20,7 @@ import com.dailyhisab.android.BuildConfig
 import com.dailyhisab.android.feature.auth.AuthUser
 import com.dailyhisab.android.feature.home.DashboardSummary
 import com.dailyhisab.android.feature.profile.LocalProfile
+import coil3.compose.AsyncImage
 
 internal enum class DrawerRoute {
     Dashboard, Expenses, Categories, Budgets, Savings, Loans, Reports, Calendar, Backup, Profile,
@@ -46,7 +47,8 @@ internal fun AppDrawer(
             ) {
                 Surface(Modifier.size(64.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(initials(user?.displayName?.ifBlank { profile.displayName } ?: profile.displayName), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        if (profile.photoUrl.isNotBlank()) AsyncImage(profile.photoUrl, "Profile image", Modifier.fillMaxSize())
+                        else Text(initials(user?.displayName?.ifBlank { profile.displayName } ?: profile.displayName), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
                 }
                 Column(Modifier.padding(start = 14.dp).weight(1f)) {

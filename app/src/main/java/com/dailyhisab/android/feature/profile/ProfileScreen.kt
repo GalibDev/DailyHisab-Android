@@ -39,8 +39,12 @@ import java.time.format.DateTimeFormatter
 import androidx.core.content.ContextCompat
 import com.dailyhisab.android.notifications.ReminderPreferences
 import com.dailyhisab.android.notifications.ReminderScheduler
+import coil3.compose.AsyncImage
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.storage.FirebaseStorage
+import android.net.Uri
 
-private enum class ProfilePage { Main, Details, Personalization, Notifications, Security, Sync, About }
+private enum class ProfilePage { Main, Details, Personalization, Notifications, Security, Sync, Payment, Help, Contact, About, Privacy }
 
 @Composable
 fun ProfileScreen(
@@ -58,6 +62,10 @@ fun ProfileScreen(
     LaunchedEffect(authState.user) {
         authState.user?.let { user ->
             preferences.update { it.copy(displayName = user.displayName.ifBlank { it.displayName }, email = user.email) }
+            FirebaseDatabase.getInstance().reference.child("users/${user.uid}/profile").get().addOnSuccessListener { snapshot ->
+                val photo = snapshot.child("photoUrl").getValue(String::class.java).orEmpty()
+                preferences.update { it.copy(photoUrl = photo.ifBlank { it.photoUrl }) }
+            }
             showAuth = false
         }
     }
@@ -77,11 +85,15 @@ fun ProfileScreen(
         ProfilePage.Notifications -> NotificationSettingsScreen(contentPadding) { page = ProfilePage.Main }
         ProfilePage.Security -> SecurityScreen(contentPadding, authState, authViewModel, { showAuth = true }) { page = ProfilePage.Main }
         ProfilePage.Sync -> CloudSyncScreen(contentPadding, authState.user, syncState, cloudSyncViewModel) { page = ProfilePage.Main }
+        ProfilePage.Payment -> PaymentMethodsScreen(contentPadding, profile, preferences) { page = ProfilePage.Main }
+        ProfilePage.Help -> InformationPage(contentPadding, "Help Center", listOf("Add income or expense from the + button or Quick Add.", "Use Reports to review, export PDF/Excel, and share monthly cards.", "For sync issues, sign in with the same account and open Backup & cloud sync.")) { page = ProfilePage.Main }
+        ProfilePage.Contact -> InformationPage(contentPadding, "Contact Us", listOf("Email: mirza.galib.palash@gmail.com", "Website: mirzagalib.xyz", "When requesting support, include the User ID shown in Personal information.")) { page = ProfilePage.Main }
         ProfilePage.About -> InformationPage(contentPadding, "About Daily Hisab", listOf(
             "Daily Hisab is a native Kotlin expense tracker built for simple daily money management.",
             "Version ${BuildConfig.VERSION_NAME}",
             "Privacy: signed-in financial data is encrypted in transit and synced with your Daily Hisab account.",
         )) { page = ProfilePage.Main }
+        ProfilePage.Privacy -> InformationPage(contentPadding, "Privacy Policy", listOf("Your finance data stays on your device and is synced to your private Firebase account only after sign-in.", "Authentication and cloud traffic are encrypted in transit. Daily Hisab does not sell personal or financial data.", "You may delete your account from Security & password. Download or back up data first if required.")) { page = ProfilePage.Main }
     }
 }
 
@@ -140,6 +152,8 @@ private fun ProfileMain(
                 ProfileMenu("Security & password", Icons.Filled.Security, { openPage(ProfilePage.Security) })
                 HorizontalDivider()
                 ProfileMenu("Backup & cloud sync", Icons.Filled.CloudUpload, { openPage(ProfilePage.Sync) }, syncLabel(syncState))
+                HorizontalDivider()
+                ProfileMenu("Payment methods", Icons.Filled.CreditCard, { openPage(ProfilePage.Payment) })
                 if (user != null) {
                     HorizontalDivider()
                     ProfileMenu("Logout", Icons.AutoMirrored.Filled.Logout, signOut)
@@ -160,9 +174,13 @@ private fun ProfileMain(
         }
         item {
             DailyHisabCard(contentPadding = PaddingValues(0.dp)) {
+                ProfileMenu("Help Center", Icons.Filled.Help, { openPage(ProfilePage.Help) })
+                HorizontalDivider()
+                ProfileMenu("Contact Us", Icons.Filled.ContactSupport, { openPage(ProfilePage.Contact) })
+                HorizontalDivider()
                 ProfileMenu("About Daily Hisab", Icons.Filled.Info, { openPage(ProfilePage.About) }, "v${BuildConfig.VERSION_NAME}")
                 HorizontalDivider()
-                ProfileMenu("Privacy policy", Icons.Filled.PrivacyTip, { openPage(ProfilePage.About) })
+                ProfileMenu("Privacy policy", Icons.Filled.PrivacyTip, { openPage(ProfilePage.Privacy) })
             }
         }
     }
@@ -265,6 +283,18 @@ private fun CloudSyncScreen(
             OutlinedButton(onClick = { confirmRestore = true }, Modifier.fillMaxWidth(), enabled = state.phase != SyncPhase.Syncing) { Text("Restore from cloud") }
             Text("Automatic sync runs after local changes. If local and cloud data conflict, the newest backup wins. First sign-in merges guest data with the account backup.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (state.history.isNotEmpty()) {
+            Text("Backup & restore history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            state.history.forEach { entry ->
+                val parts = entry.split('|', limit = 3)
+                val time = parts.getOrNull(0)?.toLongOrNull()?.let(::formatSyncTime).orEmpty()
+                ListItem(
+                    headlineContent = { Text(parts.getOrNull(2).orEmpty()) },
+                    supportingContent = { Text(time) },
+                    leadingContent = { Icon(if (parts.getOrNull(1) == "SUCCESS") Icons.Filled.CheckCircle else Icons.Filled.Error, null, tint = if (parts.getOrNull(1) == "SUCCESS") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) },
+                )
+            }
+        }
     }
     if (confirmRestore) AlertDialog(
         onDismissRequest = { confirmRestore = false },
@@ -278,8 +308,33 @@ private fun CloudSyncScreen(
 @Composable
 private fun ProfileDetails(contentPadding: PaddingValues, profile: LocalProfile, preferences: ProfilePreferences, user: AuthUser?, back: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
+    var uploadMessage by remember { mutableStateOf<String?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            if (user == null) {
+                preferences.update { it.copy(photoUrl = uri.toString()) }; uploadMessage = "Profile image saved on this device"
+            } else {
+                uploadMessage = "Uploading profile image…"
+                val ref = FirebaseStorage.getInstance().reference.child("profileImages/${user.uid}.jpg")
+                ref.putFile(uri).continueWithTask { ref.downloadUrl }.addOnSuccessListener { download ->
+                    val url = download.toString()
+                    preferences.update { it.copy(photoUrl = url) }
+                    FirebaseDatabase.getInstance().reference.child("users/${user.uid}/profile").updateChildren(mapOf("photoUrl" to url, "displayName" to (user.displayName.ifBlank { profile.displayName }), "email" to user.email))
+                    uploadMessage = "Profile image updated"
+                }.addOnFailureListener { uploadMessage = it.localizedMessage ?: "Upload failed" }
+            }
+        }
+    }
     ScreenColumn(contentPadding, "Personal information", back) {
         DailyHisabCard {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Surface(Modifier.size(92.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                    if (profile.photoUrl.isNotBlank()) AsyncImage(profile.photoUrl, "Profile image", Modifier.fillMaxSize())
+                    else Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Person, null, Modifier.size(44.dp)) }
+                }
+            }
+            OutlinedButton(onClick = { picker.launch("image/*") }, Modifier.fillMaxWidth()) { Icon(Icons.Filled.PhotoCamera, null); Spacer(Modifier.width(8.dp)); Text("Upload profile image") }
+            uploadMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             DetailRow("Name", user?.displayName?.ifBlank { profile.displayName } ?: profile.displayName)
             DetailRow("Email", user?.email?.ifBlank { profile.email }?.ifBlank { "Not connected" } ?: "Not connected")
             DetailRow("Account", if (user == null) "Local guest" else if (user.isGoogleUser) "Google account" else "Email account")
@@ -292,6 +347,27 @@ private fun ProfileDetails(contentPadding: PaddingValues, profile: LocalProfile,
     }
     if (editing) EditProfileDialog(profile, { editing = false }) { name, email ->
         preferences.update { it.copy(displayName = name, email = email) }; editing = false
+    }
+}
+
+@Composable
+private fun PaymentMethodsScreen(contentPadding: PaddingValues, profile: LocalProfile, preferences: ProfilePreferences, back: () -> Unit) {
+    val available = listOf("Cash", "bKash", "Nagad", "Bank", "Card")
+    val selected = profile.paymentMethods.split(',').filter(String::isNotBlank).toSet()
+    ScreenColumn(contentPadding, "Payment methods", back) {
+        Text("Choose the methods shown while adding a transaction.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        available.forEach { method ->
+            DailyHisabCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (method == "Cash") Icons.Filled.Payments else Icons.Filled.AccountBalanceWallet, null)
+                    Text(method, Modifier.padding(start = 12.dp).weight(1f), fontWeight = FontWeight.SemiBold)
+                    Switch(method in selected, onCheckedChange = { enabled ->
+                        val updated = if (enabled) selected + method else selected - method
+                        if (updated.isNotEmpty()) preferences.update { it.copy(paymentMethods = updated.joinToString(",")) }
+                    })
+                }
+            }
+        }
     }
 }
 
@@ -316,6 +392,7 @@ private fun SecurityScreen(
     var email by remember(state.user?.email) { mutableStateOf(state.user?.email.orEmpty()) }
     var password by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     ScreenColumn(contentPadding, "Security & password", back) {
         if (state.user == null) {
             DailyHisabCard {
@@ -344,11 +421,19 @@ private fun SecurityScreen(
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(onClick = { viewModel.sendPasswordReset(email) }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Send reset email") }
             }
+            OutlinedButton(onClick = { confirmDelete = true }, Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Filled.DeleteForever, null); Spacer(Modifier.width(8.dp)); Text("Delete account") }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
+    if (confirmDelete) AlertDialog(
+        onDismissRequest = { confirmDelete = false },
+        title = { Text("Permanently delete account?") },
+        text = { Text("This removes the Firebase login account. Back up any data you need first. Recent sign-in may be required by Firebase.") },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.deleteAccount() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+    )
 }
 
 @Composable

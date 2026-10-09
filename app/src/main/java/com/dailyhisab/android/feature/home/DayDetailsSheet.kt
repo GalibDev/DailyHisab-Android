@@ -33,7 +33,7 @@ fun DayDetailsSheet(
     transactions: List<FinanceTransaction>,
     categories: List<Category>,
     dismiss: () -> Unit,
-    addExpense: () -> Unit,
+    addExpense: (LocalDate) -> Unit,
 ) {
     var fullScreen by remember { mutableStateOf(false) }
     val currency = LocalAppDisplay.current.currency
@@ -85,7 +85,7 @@ fun DayDetailsSheet(
             }
         }
         Spacer(Modifier.height(10.dp))
-        Button(onClick = addExpense, Modifier.fillMaxWidth()) { Icon(Icons.Filled.Add, null); Spacer(Modifier.width(6.dp)); Text("খরচ যোগ করুন") }
+        Button(onClick = { addExpense(selectedDate ?: LocalDate.now()) }, Modifier.fillMaxWidth()) { Icon(Icons.Filled.Add, null); Spacer(Modifier.width(6.dp)); Text("খরচ যোগ করুন") }
     }
 
     if (fullScreen) {

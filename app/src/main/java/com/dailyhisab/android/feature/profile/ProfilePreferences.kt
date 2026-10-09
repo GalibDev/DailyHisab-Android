@@ -13,6 +13,8 @@ data class LocalProfile(
     val themeStyle: String = "Aurora",
     val language: String = "Default",
     val currency: String = "BDT",
+    val photoUrl: String = "",
+    val paymentMethods: String = "Cash,bKash,Nagad",
 )
 
 class ProfilePreferences(context: Context) {
@@ -30,6 +32,8 @@ class ProfilePreferences(context: Context) {
             .putString("themeStyle", updated.themeStyle)
             .putString("language", updated.language)
             .putString("currency", updated.currency)
+            .putString("photoUrl", updated.photoUrl)
+            .putString("paymentMethods", updated.paymentMethods)
             .apply()
         mutableProfile.value = updated
     }
@@ -46,6 +50,8 @@ class ProfilePreferences(context: Context) {
             themeStyle = preferences.getString("themeStyle", "Aurora") ?: "Aurora",
             language = preferences.getString("language", "Default") ?: "Default",
             currency = preferences.getString("currency", "BDT") ?: "BDT",
+            photoUrl = preferences.getString("photoUrl", "") ?: "",
+            paymentMethods = preferences.getString("paymentMethods", "Cash,bKash,Nagad") ?: "Cash,bKash,Nagad",
         )
     }
 }

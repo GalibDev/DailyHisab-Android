@@ -27,6 +27,7 @@ data class SyncUiState(
     val phase: SyncPhase = SyncPhase.Guest,
     val lastSyncEpochMillis: Long = 0,
     val message: String = "Sign in to enable cloud backup",
+    val history: List<String> = emptyList(),
 )
 
 @OptIn(FlowPreview::class)
@@ -36,7 +37,7 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
     private val auth = FirebaseAuth.getInstance()
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(
-        SyncUiState(lastSyncEpochMillis = preferences.lastSync),
+        SyncUiState(lastSyncEpochMillis = preferences.lastSync, history = preferences.history),
     )
     val state: StateFlow<SyncUiState> = mutableState.asStateFlow()
     private var currentUid: String? = null
@@ -164,15 +165,18 @@ class CloudSyncViewModel(application: Application) : AndroidViewModel(applicatio
     private fun recordSuccess(message: String) {
         val now = System.currentTimeMillis()
         preferences.lastSync = now
-        mutableState.value = SyncUiState(SyncPhase.Synced, now, message)
+        preferences.addHistory("$now|SUCCESS|$message")
+        mutableState.value = SyncUiState(SyncPhase.Synced, now, message, preferences.history)
     }
 
     private fun recordFailure(error: Throwable) {
         val offline = error.message?.contains("network", ignoreCase = true) == true || error.message?.contains("offline", ignoreCase = true) == true
+        preferences.addHistory("${System.currentTimeMillis()}|FAILED|${error.localizedMessage ?: "Cloud sync failed"}")
         mutableState.value = SyncUiState(
             if (offline) SyncPhase.Offline else SyncPhase.Error,
             preferences.lastSync,
             error.localizedMessage ?: "Cloud sync failed",
+            preferences.history,
         )
     }
 
@@ -201,5 +205,11 @@ private class SyncPreferences(context: Context) {
     fun markMigrated(uid: String) {
         val migrated = values.getStringSet("migrated", emptySet()).orEmpty().toMutableSet().apply { add(uid) }
         values.edit().putStringSet("migrated", migrated).apply()
+    }
+    val history: List<String>
+        get() = values.getString("history", "").orEmpty().split('\n').filter(String::isNotBlank).takeLast(12).reversed()
+    fun addHistory(entry: String) {
+        val updated = (history.reversed() + entry).takeLast(12)
+        values.edit().putString("history", updated.joinToString("\n")).apply()
     }
 }

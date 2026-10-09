@@ -18,18 +18,24 @@ import com.dailyhisab.android.domain.model.FinanceTransaction
 import com.dailyhisab.android.domain.model.TransactionType
 import java.math.BigDecimal
 import java.time.LocalDate
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun AddTransactionScreen(
     contentPadding: PaddingValues,
     onManageCategories: () -> Unit,
+    initialType: TransactionType = TransactionType.Expense,
+    initialDate: LocalDate = LocalDate.now(),
+    initialCategoryId: Long? = null,
     viewModel: AddTransactionViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
+    val paymentMethods = remember { context.getSharedPreferences("daily_hisab_profile", android.content.Context.MODE_PRIVATE).getString("paymentMethods", "Cash,bKash,Nagad")!!.split(',').filter(String::isNotBlank) }
     val categories by viewModel.categories.collectAsState()
-    var type by remember { mutableStateOf(TransactionType.Expense) }
+    var type by remember(initialType) { mutableStateOf(initialType) }
     var amount by remember { mutableStateOf("") }
-    var categoryId by remember { mutableStateOf<Long?>(null) }
-    var dateText by remember { mutableStateOf(LocalDate.now().toString()) }
+    var categoryId by remember(initialCategoryId) { mutableStateOf(initialCategoryId) }
+    var dateText by remember(initialDate) { mutableStateOf(initialDate.toString()) }
     var description by remember { mutableStateOf("") }
     var paymentMethod by remember { mutableStateOf("Cash") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -93,7 +99,7 @@ fun AddTransactionScreen(
             Spacer(Modifier.height(12.dp))
             Text("Payment method", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Cash", "bKash", "Nagad").forEach { method ->
+                paymentMethods.forEach { method ->
                     FilterChip(paymentMethod == method, { paymentMethod = method }, { Text(method) })
                 }
             }
@@ -125,4 +131,3 @@ fun AddTransactionScreen(
         )
     }
 }
-

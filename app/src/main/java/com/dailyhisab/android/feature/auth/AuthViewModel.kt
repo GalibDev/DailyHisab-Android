@@ -94,6 +94,13 @@ class AuthViewModel : ViewModel() {
         mutableState.value = AuthUiState(message = "Signed out")
     }
 
+    fun deleteAccount() = runAuthTask {
+        auth.currentUser?.delete()?.addOnCompleteListener { task ->
+            if (task.isSuccessful) mutableState.value = AuthUiState(message = "Account deleted")
+            else finishError(task.exception)
+        } ?: finishError(IllegalStateException("Sign in first"))
+    }
+
     fun reportError(error: Throwable) = finishError(error)
     fun clearNotice() { mutableState.value = mutableState.value.copy(error = null, message = null) }
 

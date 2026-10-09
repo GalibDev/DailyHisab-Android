@@ -29,6 +29,8 @@ import com.dailyhisab.android.feature.home.HomeViewModel
 import com.dailyhisab.android.feature.savings.SavingsGoalScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import com.dailyhisab.android.domain.model.TransactionType
+import java.time.LocalDate
 
 private enum class PrimaryDestination(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home), Reports("Reports", Icons.Filled.BarChart),
@@ -49,6 +51,14 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
     var managingCategories by rememberSaveable { mutableStateOf(false) }
     var reportsSection by rememberSaveable { mutableIntStateOf(0) }
     var drawerRoute by rememberSaveable { mutableStateOf(DrawerRoute.Dashboard) }
+    var addType by remember { mutableStateOf(TransactionType.Expense) }
+    var addDate by remember { mutableStateOf(LocalDate.now()) }
+    var addCategoryId by remember { mutableStateOf<Long?>(null) }
+
+    fun openAdd(type: TransactionType = TransactionType.Expense, date: LocalDate = LocalDate.now(), categoryId: Long? = null) {
+        addType = type; addDate = date; addCategoryId = categoryId
+        managingCategories = false; destination = PrimaryDestination.Add
+    }
 
     fun navigate(route: DrawerRoute) {
         drawerRoute = route
@@ -132,7 +142,8 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
                     contentPadding = contentPadding,
                     viewModel = homeViewModel,
                     onMenuClick = { scope.launch { drawerState.open() } },
-                    onAddExpense = { destination = PrimaryDestination.Add; managingCategories = false },
+                    onAddExpense = { date, categoryId -> openAdd(TransactionType.Expense, date, categoryId) },
+                    onAddIncome = { openAdd(TransactionType.Income) },
                 )
                 PrimaryDestination.Reports -> ReportsHubScreen(contentPadding = contentPadding, initialSection = reportsSection)
                 PrimaryDestination.Calendar -> CalendarScreen(contentPadding = contentPadding)
@@ -140,7 +151,13 @@ fun DailyHisabApp(profile: LocalProfile, preferences: ProfilePreferences) {
                 PrimaryDestination.Add -> if (managingCategories) {
                     CategoryScreen(contentPadding = contentPadding, onBack = { navigate(DrawerRoute.Dashboard) })
                 } else {
-                    AddTransactionScreen(contentPadding = contentPadding, onManageCategories = { managingCategories = true })
+                    AddTransactionScreen(
+                        contentPadding = contentPadding,
+                        onManageCategories = { managingCategories = true },
+                        initialType = addType,
+                        initialDate = addDate,
+                        initialCategoryId = addCategoryId,
+                    )
                 }
             }
         }
