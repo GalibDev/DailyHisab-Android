@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -36,6 +37,7 @@ fun AuthScreen(contentPadding: PaddingValues, state: AuthUiState, viewModel: Aut
     var visible by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val googleServerClientId = stringResource(R.string.default_web_client_id)
 
     Column(
         Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
@@ -70,7 +72,7 @@ fun AuthScreen(contentPadding: PaddingValues, state: AuthUiState, viewModel: Aut
                 scope.launch {
                     runCatching {
                         val option = GetGoogleIdOption.Builder()
-                            .setServerClientId(context.getString(R.string.default_web_client_id))
+                            .setServerClientId(googleServerClientId)
                             .setFilterByAuthorizedAccounts(false)
                             .setAutoSelectEnabled(false)
                             .build()

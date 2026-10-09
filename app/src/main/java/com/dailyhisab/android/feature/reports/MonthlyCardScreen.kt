@@ -152,7 +152,7 @@ private fun Metric(label: String, value: String) {
     }
 }
 
-private object MonthlyCardExporter {
+internal object MonthlyCardExporter {
     fun write(context: Context, uri: Uri, month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String) {
         context.contentResolver.openOutputStream(uri)?.use { stream -> render(month, income, expense, hidden, currency).compress(Bitmap.CompressFormat.PNG, 100, stream) }
     }
@@ -171,7 +171,7 @@ private object MonthlyCardExporter {
         }
     }
 
-    private fun render(month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String): Bitmap {
+    internal fun render(month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String): Bitmap {
         val bitmap = Bitmap.createBitmap(1080, 1350, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.rgb(12, 49, 139))

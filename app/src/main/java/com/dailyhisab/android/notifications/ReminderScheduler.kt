@@ -37,15 +37,19 @@ object ReminderScheduler {
             return
         }
         val now = ZonedDateTime.now()
-        var next = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
-        if (!next.isAfter(now)) next = next.plusDays(1)
         manager.enqueueUniquePeriodicWork(
             name,
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<ReminderWorker>(24, TimeUnit.HOURS)
-                .setInitialDelay(Duration.between(now, next))
+                .setInitialDelay(nextReminderDelay(now, hour, minute))
                 .setInputData(workDataOf(ReminderWorker.KEY_TYPE to type))
                 .build(),
         )
     }
+}
+
+internal fun nextReminderDelay(now: ZonedDateTime, hour: Int, minute: Int): Duration {
+    var next = now.withHour(hour.coerceIn(0, 23)).withMinute(minute.coerceIn(0, 59)).withSecond(0).withNano(0)
+    if (!next.isAfter(now)) next = next.plusDays(1)
+    return Duration.between(now, next)
 }
