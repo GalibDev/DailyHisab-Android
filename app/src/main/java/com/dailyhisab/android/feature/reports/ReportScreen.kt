@@ -57,7 +57,7 @@ fun ReportScreen(contentPadding: PaddingValues, viewModel: ReportViewModel = vie
     val rows = transactions.filter { it.type == type && it.date in range.first..range.second }
     val total = rows.sumOf { it.amountMinor }
     if (showMonthlyCard) {
-        MonthlyCardScreen(transactions = transactions, back = { showMonthlyCard = false })
+        MonthlyCardScreen(contentPadding = contentPadding, transactions = transactions, back = { showMonthlyCard = false })
         return
     }
 

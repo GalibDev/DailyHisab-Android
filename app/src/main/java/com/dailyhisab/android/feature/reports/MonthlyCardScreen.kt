@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -37,9 +38,13 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import com.dailyhisab.android.ui.LocalAppDisplay
 import com.dailyhisab.android.ui.appMoney
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MonthlyCardScreen(
+    contentPadding: PaddingValues,
     transactions: List<FinanceTransaction>,
     back: () -> Unit,
 ) {
@@ -48,49 +53,71 @@ fun MonthlyCardScreen(
     var month by remember { mutableStateOf(YearMonth.now()) }
     var hideAmounts by remember { mutableStateOf(true) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
-    val monthRows = transactions.filter { YearMonth.from(it.date) == month }
-    val income = monthRows.filter { it.type == TransactionType.Income }.sumOf { it.amountMinor }
-    val expense = monthRows.filter { it.type == TransactionType.Expense }.sumOf { it.amountMinor }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val monthRows = remember(transactions, month) { transactions.filter { YearMonth.from(it.date) == month } }
+    val income = remember(monthRows) { monthRows.filter { it.type == TransactionType.Income }.sumOf { it.amountMinor } }
+    val expense = remember(monthRows) { monthRows.filter { it.type == TransactionType.Expense }.sumOf { it.amountMinor } }
     val download = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
         if (uri != null) {
-            MonthlyCardExporter.write(context, uri, month, income, expense, hideAmounts, currency)
-            savedMessage = "PNG downloaded"
+            scope.launch {
+                busy = true
+                savedMessage = runCatching {
+                    withContext(Dispatchers.IO) { MonthlyCardExporter.write(context, uri, month, income, expense, hideAmounts, currency) }
+                    "PNG downloaded"
+                }.getOrElse { "Download failed: ${it.localizedMessage ?: "unknown error"}" }
+                busy = false
+            }
         }
     }
 
-    Column(
-        Modifier.fillMaxSize().padding(20.dp),
+    LazyColumn(
+        Modifier.fillMaxSize().padding(contentPadding),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        item { Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             Text("মাসিক হিসাব শেয়ার করুন", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        }
-        Text("মাস", fontWeight = FontWeight.SemiBold)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        } }
+        item { Text("মাস", fontWeight = FontWeight.SemiBold) }
+        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { month = month.minusMonths(1) }) { Icon(Icons.Filled.ChevronLeft, "Previous month") }
             OutlinedCard(Modifier.weight(1f)) {
                 Text(month.format(DateTimeFormatter.ofPattern("MMMM yyyy")), Modifier.fillMaxWidth().padding(18.dp), style = MaterialTheme.typography.titleMedium)
             }
             IconButton(onClick = { month = month.plusMonths(1) }, enabled = month < YearMonth.now()) { Icon(Icons.Filled.ChevronRight, "Next month") }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        } }
+        item { Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(hideAmounts, { hideAmounts = it })
             Text("টাকার পরিমাণ লুকিয়ে রাখুন", style = MaterialTheme.typography.titleMedium)
-        }
-        Text("নিচের ছবিটিই শেয়ার হবে। নাম, নোট বা লেনদেনের বিস্তারিত থাকবে না।", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        MonthlyCardPreview(month, income, expense, hideAmounts, currency)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        } }
+        item { Text("নিচের ছবিটিই শেয়ার হবে। নাম, নোট বা লেনদেনের বিস্তারিত থাকবে না।", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { MonthlyCardPreview(month, income, expense, hideAmounts, currency) }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = { download.launch("daily-hisab-${month}.png") },
                 modifier = Modifier.weight(1f),
+                enabled = !busy,
             ) { Icon(Icons.Filled.Download, null); Spacer(Modifier.width(6.dp)); Text("PNG ডাউনলোড") }
             Button(
-                onClick = { MonthlyCardExporter.share(context, month, income, expense, hideAmounts, currency) },
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        savedMessage = runCatching {
+                            val shareIntent = withContext(Dispatchers.IO) { MonthlyCardExporter.createShareIntent(context, month, income, expense, hideAmounts, currency) }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share monthly card"))
+                            "Share sheet opened"
+                        }.getOrElse { "Share failed: ${it.localizedMessage ?: "unknown error"}" }
+                        busy = false
+                    }
+                },
                 modifier = Modifier.weight(1f),
+                enabled = !busy,
             ) { Icon(Icons.Filled.Share, null); Spacer(Modifier.width(6.dp)); Text("শেয়ার") }
-        }
-        savedMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold) }
+        } }
+        if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        savedMessage?.let { message -> item { Text(message, color = if (message.contains("failed", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold) } }
     }
 }
 
@@ -130,16 +157,18 @@ private object MonthlyCardExporter {
         context.contentResolver.openOutputStream(uri)?.use { stream -> render(month, income, expense, hidden, currency).compress(Bitmap.CompressFormat.PNG, 100, stream) }
     }
 
-    fun share(context: Context, month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String) {
+    fun createShareIntent(context: Context, month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String): Intent {
         val directory = File(context.cacheDir, "exports").apply { mkdirs() }
         val file = File(directory, "daily-hisab-${month}.png")
         file.outputStream().use { render(month, income, expense, hidden, currency).compress(Bitmap.CompressFormat.PNG, 100, it) }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        return Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TEXT, "Daily Hisab — ${month.format(DateTimeFormatter.ofPattern("MMMM yyyy"))}")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }, "Share monthly card"))
+            clipData = android.content.ClipData.newRawUri("Daily Hisab monthly card", uri)
+        }
     }
 
     private fun render(month: YearMonth, income: Long, expense: Long, hidden: Boolean, currency: String): Bitmap {
